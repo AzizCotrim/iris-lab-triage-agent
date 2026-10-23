@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile
     env_file:
       - .env
-    restart: always
+    restart: unless-stopped
     environment:
       - ISC_CPF_MERGE_FILE=/home/irisowner/dev/merge.cpf
     ports:
