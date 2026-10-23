@@ -1,0 +1,13 @@
+.env
+*.key
+keys/
+
+# runtime folders: keep the folder, ignore the content
+data/in/*
+data/error/*
+data/archive/*
+data/out/*
+!data/in/.gitkeep
+!data/error/.gitkeep
+!data/archive/.gitkeep
+!data/out/.gitkeep
