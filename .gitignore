@@ -11,3 +11,4 @@ data/out/*
 !data/error/.gitkeep
 !data/archive/.gitkeep
 !data/out/.gitkeep
+iris-main.log

@@ -1,0 +1,6 @@
+    zn "%SYS"
+    do ##class(Security.Users).UnExpireUserPasswords("*")
+
+    zn "IRISAPP"
+    do $system.OBJ.LoadDir("/home/irisowner/dev/src","ck",,1)
+    halt

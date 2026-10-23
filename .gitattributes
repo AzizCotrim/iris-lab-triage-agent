@@ -1,1 +1,9 @@
 *.hl7 -text
+
+*.cls linguist-language=ObjectScript
+*.cls text eol=lf
+*.mac text eol=lf
+*.int text eol=lf
+*.inc text eol=lf
+*.sh text eol=lf
+Dockerfil* text eol=lf
