@@ -40,6 +40,6 @@
   - gemini-3.5-flash-lite -> works
 - Model id works without the "models/" prefix.
 - Errors surface as %Exception.StatusException with <%AICore>ModelNotFound or <%AICore>InternalError (timeout).
-- Latency (one-sentence prompt, gemini-3.5-flash-lite): 0.6-1.0 s in 8 of 9 calls; one outlier of 13.5 s
+- Latency (one-sentence prompt, gemini-3.5-flash-lite): 0.6-1.0 s in 5 of 6 calls; one outlier of 13.5 s
   (first call of the day). A first call in a new session took 0.8 s, so it is not a per-session startup cost.
 - Timeout of 30 s per call kept; re-measure with the real triage prompt.
