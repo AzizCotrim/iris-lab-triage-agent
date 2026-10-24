@@ -43,3 +43,18 @@
 - Latency (one-sentence prompt, gemini-3.5-flash-lite): 0.6-1.0 s in 5 of 6 calls; one outlier of 13.5 s
   (first call of the day). A first call in a new session took 0.8 s, so it is not a per-session startup cost.
 - Timeout of 30 s per call kept; re-measure with the real triage prompt.
+
+## 2026-10-24 — Tool calling test (template clone, not this repo)
+
+- Switched Sample.Agent to provider "gemini", GOOGLE_API_KEY and gemini-3.5-flash-lite; enabled the ConsoleAudit policy in Sample.ToolSet.
+- Tools declared only with /// comments and plain method/query signatures (as in Sample.Tools, no [ WebMethod ] or
+  Parameter DESCRIPTION as shown in the toolsets reference) are discovered and called in build 154.
+- The model listed only the 2 ObjectScript tools; the Python MCP server declared in Sample.ToolSet did not show up (cause unknown).
+- One Chat() requested both tools in a single response (AddPerson and GetPeopleYoungerThan), before seeing the first result.
+- ConsoleAudit prints each call with status, result and duration (5 ms and 62 ms).
+- session.GetStats(): total_interactions 3, total_tool_calls 2, total_tool_duration_ms 69, total_llm_duration_ms 14608,
+  total_prompt_tokens 809, total_completion_tokens 211. Latency is available in the stats (accumulated per session).
+- With tools and a longer prompt, each LLM interaction took about 5 s (vs about 0.7 s for a one-sentence prompt).
+- Each tool use adds one extra LLM interaction; the full history and tool list are resent on every interaction.
+- The final answer matched the SQL result exactly (checked with SELECT on Sample.Person).
+- Not tested yet: registering a tool instance with per-run state (needed to keep the patient key out of the LLM input).
