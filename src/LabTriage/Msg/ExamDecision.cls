@@ -1,0 +1,43 @@
+Class LabTriage.Msg.ExamDecision Extends (%SerialObject, %XML.Adaptor)
+{
+    Property LoincCode As %String;
+    
+    Property ExamName As %String;
+    
+    /// Who decided where this exam goes: the deterministic rule, the agent,
+    /// or the fallback after an agent failure.
+    Property DecidedBy As %String(VALUELIST = ",RULE,AGENT,FALLBACK");
+
+    /// Why the exam is in this list (NORMAL, CRITICAL_HIGH, AGENT_FLAGGED, ...).
+    /// Not the same as ExamResult.ReasonCode, which says why an exam cannot be evaluated.
+    Property ReasonCode As %String;
+
+    /// Human-readable reason, from the rule or from the agent.
+    /// MAXLEN follows the Process validation limit for the agent reason (500).
+    Property Reason As %String(MAXLEN = 500);
+
+Storage Default
+{
+<Data name="ExamDecisionState">
+<Value name="1">
+<Value>LoincCode</Value>
+</Value>
+<Value name="2">
+<Value>ExamName</Value>
+</Value>
+<Value name="3">
+<Value>DecidedBy</Value>
+</Value>
+<Value name="4">
+<Value>ReasonCode</Value>
+</Value>
+<Value name="5">
+<Value>Reason</Value>
+</Value>
+</Data>
+<State>ExamDecisionState</State>
+<StreamLocation>^LabTriage.Msg.ExamDecisionS</StreamLocation>
+<Type>%Storage.Serial</Type>
+}
+
+}
