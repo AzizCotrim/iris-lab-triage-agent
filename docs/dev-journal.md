@@ -58,3 +58,33 @@
 - Each tool use adds one extra LLM interaction; the full history and tool list are resent on every interaction.
 - The final answer matched the SQL result exactly (checked with SELECT on Sample.Person).
 - Not tested yet: registering a tool instance with per-run state (needed to keep the patient key out of the LLM input).
+
+## 2026-10-26 — Service design and message classes
+
+### Service design
+- Own Business Service with EnsLib.File.InboundAdapter, using EnsLib.HL7.Message only to parse.
+  Not EnsLib.HL7.Service.FileService: it sends the EnsLib.HL7.Message itself to the target,
+  so the Process would have to know HL7.
+- Fields read by position (segment:field, loop over segments, check for OBX), no DocType.
+  Validating against the 2.5.1 schema is optional.
+- File Inbound Adapter docs disagree with each other: the guide shows %FileCharacterStream,
+  a community article shows %Stream.FileCharacter, and the Charset default is "Default" on the
+  settings page but "Native" in an online Class Reference for another product version.
+  To check on build 154: log $classname(pInput).
+
+### Numeric values
+- Using text as a number truncates silently, with no error:
+  "QNS"+0 = 0, "13,5"+0 = 13, "<0.5"+0 = 0.
+  A sodium "QNS" would become 0 (false CRITICAL_LOW); a potassium "6,8" would become 6
+  (a real critical missed).
+- $ISVALIDNUM: "13.8" = 1; "QNS", "13,5", "<0.5" and "" = 0. The Service converts only after it.
+
+### Time
+- The container runs in UTC: $HOROLOG gave 20:53 at 17:53 local time.
+- Messages store UTC with $ZTIMESTAMP (UTC by definition, not by container config).
+  Conversion to -03:00 happens only in the DecisionFileOperation.
+
+### Message classes
+- ExamResult and ExamDecision: %SerialObject + %XML.Adaptor (saved inside the message).
+- TriageRequest and TriageResponse: Ens.Request (TriageResponse is sent by the Process
+  to the
