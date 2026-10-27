@@ -9,7 +9,8 @@ Class LabTriage.Msg.ExamDecision Extends (%SerialObject, %XML.Adaptor)
     Property DecidedBy As %String(VALUELIST = ",RULE,AGENT,FALLBACK");
 
     /// Why the exam is in this list (NORMAL, CRITICAL_HIGH, AGENT_FLAGGED, ...).
-    /// Not the same as ExamResult.ReasonCode, which says why an exam cannot be evaluated.
+    /// Same vocabulary as ExamResult.ReasonCode: when an exam cannot be evaluated,
+    /// the Process copies that code here.
     Property ReasonCode As %String;
 
     /// Human-readable reason, from the rule or from the agent.

@@ -10,11 +10,11 @@ Class LabTriage.Msg.ExamResult Extends (%SerialObject, %XML.Adaptor)
 
     /// Result value exactly as received in OBX-5, kept for audit.
     /// May be non-numeric (e.g. QNS, <0.5, 13,5).
-    Property RawValue As %String (MAXLEN = 255);
+    Property RawValue As %String(MAXLEN = 255);
 
     /// RawValue as a number. Set only when the whole RawValue is a valid number
     /// ($ISVALIDNUM). Empty when ReasonCode is set.
-    Property NumericValue As %Decimal (SCALE = 5);
+    Property NumericValue As %Decimal(SCALE = 5);
 
     /// Unit of measure from OBX-6 (e.g. mg/dL). Compared with the catalog unit.
     Property Unit As %String;
@@ -24,6 +24,7 @@ Class LabTriage.Msg.ExamResult Extends (%SerialObject, %XML.Adaptor)
 
     /// Abnormal flag from the laboratory, OBX-8 (N, H, L, HH, LL, A, AA).
     /// An empty flag in the file is stored as N.
+    /// Any other value is stored as received and gets UNKNOWN_FLAG.
     Property AbnormalFlag As %String;
 
     /// Result status from OBX-11 (F final, P preliminary, C corrected).
@@ -34,8 +35,9 @@ Class LabTriage.Msg.ExamResult Extends (%SerialObject, %XML.Adaptor)
     /// (e.g. 20261027071500). Not converted.
     Property ObsDateTime As %String;
     
-    /// Why this exam cannot be evaluated (INVALID_VALUE, UNEXPECTED_UNIT, NOT_FINAL, UNSUPPORTED_EXAM, ...).
-    /// Empty means the exam is valid. When not empty, the numeric value must not be used.
+    /// Why this exam cannot be evaluated (INVALID_VALUE, UNEXPECTED_UNIT,
+    /// NOT_FINAL, UNSUPPORTED_EXAM, UNKNOWN_FLAG, UNPARSEABLE_RANGE).
+    /// Empty means the exam is valid. When set, NumericValue is empty.
     Property ReasonCode As %String;
 
 Storage Default

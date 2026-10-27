@@ -7,14 +7,14 @@ Class LabTriage.Msg.TriageResponse Extends Ens.Request
     /// OBR-2.
     Property OrderId As %String;
     
-    /// PID-3.1. Output only; never sent to the agent.
+    /// PID-3.1. Output only; never sent to the LLM.
     Property PatientId As %String;
     
     /// REVIEW_DECISION is added with the review queue.
-    Property OutputType As %String (VALUELIST = ",CRITICAL_ALERT,FINAL");
+    Property OutputType As %String(VALUELIST = ",CRITICAL_ALERT,FINAL") [ Required ];
     
     /// Most severe decision among the lists.
-    Property Decision As %String (VALUELIST = ",RELEASE,HOLD_FOR_REVIEW,CRITICAL");
+    Property Decision As %String(VALUELIST = ",RELEASE,HOLD_FOR_REVIEW,CRITICAL") [ Required ];
     
     
     Property Released As list Of LabTriage.Msg.ExamDecision;
