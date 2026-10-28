@@ -88,3 +88,47 @@
 - ExamResult and ExamDecision: %SerialObject + %XML.Adaptor (saved inside the message).
 - TriageRequest and TriageResponse: Ens.Request (TriageResponse is sent by the Process
   to the
+
+## 2026-10-27 — FileInbound service on build 154
+
+### Observed on build 154
+- The File Inbound Adapter passes %Library.FileCharacterStream (as in the adapter guide;
+  the community article showing %Stream.FileCharacter does not match).
+  Attributes("Filename") holds the full path inside the container.
+- Ens.BusinessService.OnProcessInput has a third argument (ByRef pHint As %String);
+  the example in the adapter guide shows only two.
+- ImportFromLibraryStream on non-HL7 data returns an OK status and no object, with only
+  a Warning ("Discarding received non-HL7 data"). The Service checks $ISOBJECT and
+  returns its own error (#5001).
+- When OnProcessInput returns an error, the adapter leaves the file in FilePath and skips
+  it ("Skipping previously errored file"). Archived files get a timestamp suffix.
+- After recompiling, a running item keeps the old code ("continuing to run using code
+  from previous version"): restart the production.
+- Saving in the Management Portal rewrites the production XData (default attributes on
+  every item); check git diff on Production.cls before committing.
+- EnsLib.HL7.Message: the segment count is SegCount; GetSegmentAt(i).Name gives the
+  segment type; GetValueAt("i:field.component") reads a field.
+- The Event Log shows times in UTC.
+
+### Decisions
+- ConfirmComplete = 1 (Size): on Linux a file can be opened while another process is
+  still writing it, so Readable (the default) and Writable confirm nothing.
+- SourceFileName keeps only the file name (%File.GetFilename), not the container path.
+- Service checks, in order: import status, object returned, first segment is MSH,
+  MSH-9.1 = ORU and MSH-9.2 = R01, at least one OBX (counted over the whole message).
+- First MVP step reads only hemoglobin (718-7); the other exams come with the catalog.
+
+## 2026-10-28 — First end-to-end flow
+
+- Monday's milestone reached: 01-normal.hl7 in data/in produces
+  data/out/RELEASE/SYN-ORU-0001.final.json (hemoglobin released by RULE, agent not called).
+- TriageProcess is an ObjectScript class (Ens.BusinessProcess), not BPL: the
+  validation, retry and fallback logic is easier to read and to unit test in code.
+- Exams the Service marks with a reasonCode go to the review list; nothing invalid
+  is released.
+- DecisionFileOperation writes to a .tmp file and renames it, so a reader never sees a
+  half-written file. PoolSize 1 keeps alert and final in arrival order.
+- emittedAt is written in UTC as ISO 8601 with "Z" (e.g. 2026-10-28T19:38:50.244Z)
+  instead of -03:00: unambiguous for judges in any time zone. Spec to be updated.
+- Temporary: valid exams outside the reference range are still released; they go to
+  the agent from the agent day on.
