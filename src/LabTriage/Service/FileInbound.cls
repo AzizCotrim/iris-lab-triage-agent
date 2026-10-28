@@ -57,12 +57,30 @@ Class LabTriage.Service.FileInbound Extends Ens.BusinessService
             } ElseIf (tSegName = "OBX") {
                 Set tObxCount = tObxCount + 1
 
-                // MVP step 1: only hemoglobin (LOINC 718-7) is kept; other OBX are skipped until the exam catalog exists.
-                If (tMsg.GetValueAt(tSegIndex_":3.1") = "718-7")
+                Set tExamResult = ##class(LabTriage.Msg.ExamResult).%New()
+                Set tExamResult.LoincCode = tMsg.GetValueAt(tSegIndex_":3.1")
+                Set tExamResult.RawValue = tMsg.GetValueAt(tSegIndex_":5")
+                Set tExamResult.Unit = tMsg.GetValueAt(tSegIndex_":6")
+                Set tExamResult.ReferenceRange = tMsg.GetValueAt(tSegIndex_":7")
+
+                Set tExamResult.AbnormalFlag = tMsg.GetValueAt(tSegIndex_":8")
+                If (tExamResult.AbnormalFlag = "")
                 {
-                    Set tExamResult = ##class(LabTriage.Msg.ExamResult).%New()
-                    Set tExamResult.LoincCode = tMsg.GetValueAt(tSegIndex_":3.1")
-                    Set tExamResult.RawValue = tMsg.GetValueAt(tSegIndex_":5")
+                    Set tExamResult.AbnormalFlag = "N"
+                }
+
+                Set tExamResult.ResultStatus = tMsg.GetValueAt(tSegIndex_":11")
+                Set tExamResult.ObsDateTime = tMsg.GetValueAt(tSegIndex_":14")
+
+                Set tEntry = ##class(LabTriage.ExamCatalog).Lookup(tExamResult.LoincCode)
+                If '$ISOBJECT(tEntry)
+                {
+                    // Not in the exam catalog: kept so it shows up for review, never evaluated.
+                    Set tExamResult.ReasonCode = "UNSUPPORTED_EXAM"
+                    $$$LOGWARNING("Unsupported exam LOINC "_tExamResult.LoincCode_" in MSH-10="_tTriageRequest.MessageControlId_"; add it to the exam catalog to evaluate it")
+                } Else
+                {
+                    Set tExamResult.ExamName = tEntry.name
                     If ($ISVALIDNUM(tExamResult.RawValue))
                     {
                         Set tExamResult.NumericValue = tExamResult.RawValue
@@ -70,22 +88,10 @@ Class LabTriage.Service.FileInbound Extends Ens.BusinessService
                     {
                         Set tExamResult.ReasonCode = "INVALID_VALUE"
                     }
-
-                    Set tExamResult.Unit = tMsg.GetValueAt(tSegIndex_":6")
-                    Set tExamResult.ReferenceRange = tMsg.GetValueAt(tSegIndex_":7")
-
-                    Set tExamResult.AbnormalFlag = tMsg.GetValueAt(tSegIndex_":8")
-                    If (tExamResult.AbnormalFlag = "")
-                    {
-                        Set tExamResult.AbnormalFlag = "N"
-                    }
-
-                    Set tExamResult.ResultStatus = tMsg.GetValueAt(tSegIndex_":11")
-                    Set tExamResult.ObsDateTime = tMsg.GetValueAt(tSegIndex_":14")
-
-                    Do tTriageRequest.Exams.Insert(tExamResult)
-                    $$$LOGINFO("OBX "_tSegIndex_" hemoglobin (718-7) raw value= "_tExamResult.RawValue_ " MSH-10="_tTriageRequest.MessageControlId)
                 }
+
+                Do tTriageRequest.Exams.Insert(tExamResult)
+                $$$LOGINFO("OBX "_tSegIndex_" LOINC="_tExamResult.LoincCode_" raw value="_tExamResult.RawValue_" reasonCode="_tExamResult.ReasonCode)
             }
         }
 
