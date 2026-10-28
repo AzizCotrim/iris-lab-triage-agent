@@ -18,6 +18,13 @@ Class LabTriage.Rules.CriticalLimits
             Set tReturn = "NOT_EVALUABLE"
             Return tReturn
         }
+
+        // NEW: the rule only evaluates what it can compare: a numeric value in the catalog unit.
+        If ((pExam.NumericValue = "") || (pExam.Unit '= tEntry.unit))
+        {
+            Return "NOT_EVALUABLE"
+        }
+
         Set tNumericValue = pExam.NumericValue
         Set tName = tEntry.name
         Set tUnit = tEntry.unit
@@ -25,16 +32,18 @@ Class LabTriage.Rules.CriticalLimits
         Set tCriticalHigh = tEntry.criticalHigh
 
         // Limits are exclusive (< and >). An empty limit means the exam has no limit on that side.
+        // The reason shows RawValue (as the laboratory sent it); comparisons use the numeric value.
         If ((tCriticalLow '= "") && (tNumericValue < tCriticalLow))
         {
             Set pReasonCode = "CRITICAL_LOW"
-            Set pReason = tName_" "_tNumericValue_" "_tUnit_" is below the critical low limit of "_tCriticalLow_" "_tUnit_" (fictional limit)."
+            // CHANGED: pExam.RawValue instead of tNumericValue
+            Set pReason = tName_" "_pExam.RawValue_" "_tUnit_" is below the critical low limit of "_tCriticalLow_" "_tUnit_" (fictional limit)."
             Set tReturn = "CRITICAL"
-        } 
-        ElseIf ((tCriticalHigh '= "") && (tNumericValue > tCriticalHigh))
+        } ElseIf ((tCriticalHigh '= "") && (tNumericValue > tCriticalHigh))
         {
             Set pReasonCode = "CRITICAL_HIGH"
-            Set pReason = tName_" "_tNumericValue_" "_tUnit_" is above the critical high limit of "_tCriticalHigh_" "_tUnit_" (fictional limit)."
+            // CHANGED: pExam.RawValue instead of tNumericValue
+            Set pReason = tName_" "_pExam.RawValue_" "_tUnit_" is above the critical high limit of "_tCriticalHigh_" "_tUnit_" (fictional limit)."
             Set tReturn = "CRITICAL"
         }
 
@@ -43,7 +52,8 @@ Class LabTriage.Rules.CriticalLimits
         If ((tReturn = "OK") && ((pExam.AbnormalFlag = "HH") || (pExam.AbnormalFlag = "LL") || (pExam.AbnormalFlag = "AA")))
         {
             Set pReasonCode = "CRITICAL_LAB_FLAG"
-            Set pReason = tName_" "_tNumericValue_" "_tUnit_" is within the critical limits, but the laboratory flagged it as "_pExam.AbnormalFlag_"."
+            // CHANGED: pExam.RawValue instead of tNumericValue
+            Set pReason = tName_" "_pExam.RawValue_" "_tUnit_" is within the critical limits, but the laboratory flagged it as "_pExam.AbnormalFlag_"."
             Set tReturn = "CRITICAL"
         }
 
