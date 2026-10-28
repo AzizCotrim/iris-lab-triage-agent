@@ -16,6 +16,9 @@ XData ProductionDefinition
   </Item>
   <Item Name="TriageProcess" Category="" ClassName="LabTriage.Process.TriageProcess" PoolSize="1" Enabled="true" Foreground="false" Comment="" LogTraceEvents="false" Schedule="">
   </Item>
+  <Item Name="DecisionFileOperation" ClassName="LabTriage.Operation.DecisionFileOperation" PoolSize="1" Enabled="true">
+    <Setting Target="Host" Name="OutputPath">/home/irisowner/dev/data/out/</Setting>
+  </Item>
 </Production>
 }
 

@@ -95,7 +95,8 @@ Class LabTriage.Service.FileInbound Extends Ens.BusinessService
         }
 
         $$$LOGINFO("MSH-10="_tTriageRequest.MessageControlId_" patient="_tTriageRequest.PatientId_" order="_tTriageRequest.OrderId_" exams="_tTriageRequest.Exams.Count())
-        Return $$$OK
+        
+        Return ..SendRequestAsync(..TargetConfigName, tTriageRequest)
     }
 
 }
