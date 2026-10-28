@@ -8,7 +8,7 @@ Class LabTriage.Operation.DecisionFileOperation Extends Ens.BusinessOperation
 
     Parameter SETTINGS = "OutputPath:Basic";
 
-    /// Root folder for output files, as seen inside the container (ends with /).
+    /// Root folder for output files, as seen inside the container. Must end with "/": paths are built by plain concatenation.
     Property OutputPath As %String(MAXLEN = 255);
 
     Method OnMessage(pRequest As LabTriage.Msg.TriageResponse, Output pResponse As %Library.Persistent) As %Status
@@ -17,11 +17,11 @@ Class LabTriage.Operation.DecisionFileOperation Extends Ens.BusinessOperation
         If (pRequest.OutputType = "CRITICAL_ALERT")
         {
             Set tSubdir = "ALERTS"
-            Set tName = pRequest.MessageControlId_".critical.json"
+            Set tFileName = pRequest.MessageControlId_".critical.json"
         } Else
         {
             Set tSubdir = pRequest.Decision
-            Set tName = pRequest.MessageControlId_".final.json"
+            Set tFileName = pRequest.MessageControlId_".final.json"
         }
 
         // 2. JSON content
@@ -31,15 +31,15 @@ Class LabTriage.Operation.DecisionFileOperation Extends Ens.BusinessOperation
         Do tJson.%Set("orderId", pRequest.OrderId)
         Do tJson.%Set("patientId", pRequest.PatientId)
         Do tJson.%Set("decision", pRequest.Decision)
-        Do tJson.%Set("released", ..ItemsToArray(pRequest.Released))
-        Do tJson.%Set("review", ..ItemsToArray(pRequest.Review))
-        Do tJson.%Set("critical", ..ItemsToArray(pRequest.Critical))
+        Do tJson.%Set("released", ..DecisionsToJsonArray(pRequest.Released))
+        Do tJson.%Set("review", ..DecisionsToJsonArray(pRequest.Review))
+        Do tJson.%Set("critical", ..DecisionsToJsonArray(pRequest.Critical))
 
         Set tAgent = {}
         Do tAgent.%Set("called", pRequest.AgentCalled, "boolean")
         Do tJson.%Set("agent", tAgent)
 
-        // Stored in UTC; written in ISO 8601 with Z
+        // EmittedAt is stored in UTC as "YYYY-MM-DD hh:mm:ss.fff"; written as ISO 8601 with "T" and "Z".
         Do tJson.%Set("emittedAt", $TRANSLATE(pRequest.EmittedAt, " ", "T")_"Z")
 
         // 3. Write to a temporary file, then rename, so nobody reads a half-written file
@@ -52,10 +52,10 @@ Class LabTriage.Operation.DecisionFileOperation Extends Ens.BusinessOperation
             }
         }
 
-        Set tTmp = tDir_tName_".tmp"
+        Set tTmpFileName = tDir_tFileName_".tmp"
         Set tStream = ##class(%Stream.FileCharacter).%New()
         Set tStream.TranslateTable = "UTF8"
-        Set tSC = tStream.LinkToFile(tTmp)
+        Set tSC = tStream.LinkToFile(tTmpFileName)
         If $$$ISERR(tSC)
         {
             Return tSC
@@ -66,25 +66,26 @@ Class LabTriage.Operation.DecisionFileOperation Extends Ens.BusinessOperation
         {
             Return tSC
         }
+        // Close the file before renaming it.
         Kill tStream
 
-        If '##class(%File).Rename(tTmp, tDir_tName)
+        If '##class(%File).Rename(tTmpFileName, tDir_tFileName)
         {
-            Return $$$ERROR($$$GeneralError, "Could not write "_tDir_tName)
+            Return $$$ERROR($$$GeneralError, "Could not rename "_tTmpFileName_" to "_tDir_tFileName)
         }
 
-        $$$LOGINFO("Wrote "_tSubdir_"/"_tName)
+        $$$LOGINFO("Wrote "_tSubdir_"/"_tFileName)
         Return $$$OK
     }
 
-    /// Converts a list of ExamDecision into a JSON array of output items.
-    ClassMethod ItemsToArray(pList As %Collection.ListOfObj) As %DynamicArray
+    /// Converts a list of ExamDecision objects into a JSON array, one JSON object per exam.
+    ClassMethod DecisionsToJsonArray(pDecisions As %Collection.ListOfObj) As %DynamicArray
     {
         Set tArray = []
-        For i = 1:1:pList.Count()
+        For tIndex = 1:1:pDecisions.Count()
         {
-            Set tItem = pList.GetAt(i)
-            Do tArray.%Push({"code": (tItem.LoincCode), "name": (tItem.ExamName), "decidedBy": (tItem.DecidedBy), "reasonCode": (tItem.ReasonCode), "reason": (tItem.Reason)})
+            Set tDecision = pDecisions.GetAt(tIndex)
+            Do tArray.%Push({"code": (tDecision.LoincCode), "name": (tDecision.ExamName), "decidedBy": (tDecision.DecidedBy), "reasonCode": (tDecision.ReasonCode), "reason": (tDecision.Reason)})
         }
         Return tArray
     }

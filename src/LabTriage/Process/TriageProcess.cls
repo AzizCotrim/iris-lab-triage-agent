@@ -11,34 +11,36 @@ Class LabTriage.Process.TriageProcess Extends Ens.BusinessProcess
         Set tTriageResponse.PatientId = pRequest.PatientId
         Set tTriageResponse.OutputType = "FINAL"
 
-        Set tQtExams = pRequest.Exams.Count()
-        For i = 1:1:tQtExams
+        Set tExamCount = pRequest.Exams.Count()
+        For tExamIndex = 1:1:tExamCount
         {
-            Set tExam = pRequest.Exams.GetAt(i)
+            Set tExamResult = pRequest.Exams.GetAt(tExamIndex)
 
             Set tExamDecision = ##class(LabTriage.Msg.ExamDecision).%New()
-            Set tExamDecision.LoincCode = tExam.LoincCode
-            Set tExamDecision.ExamName = tExam.ExamName
+            Set tExamDecision.LoincCode = tExamResult.LoincCode
+            Set tExamDecision.ExamName = tExamResult.ExamName
             Set tExamDecision.DecidedBy = "RULE"
 
-            If (tExam.ReasonCode '= "")
+            If (tExamResult.ReasonCode '= "")
             {
-                Set tExamDecision.ReasonCode = tExam.ReasonCode
-                Set tExamDecision.Reason = "Exam cannot be evaluated: "_tExam.ReasonCode_"."
+                Set tExamDecision.ReasonCode = tExamResult.ReasonCode
+                Set tExamDecision.Reason = "Exam cannot be evaluated: "_tExamResult.ReasonCode_"."
                 Do tTriageResponse.Review.Insert(tExamDecision)
             } Else
             {
                 // TODO (agent day): abnormal exams go to the agent instead of being released.
                 Set tExamDecision.ReasonCode = "NORMAL"
-                Set tExamDecision.Reason = "Within reference range."
+                Set tExamDecision.Reason = "Valid value; reference range not checked yet."
                 Do tTriageResponse.Released.Insert(tExamDecision)
             }
         }
+        // A single exam under review holds the whole message; otherwise it is released.
         Set tTriageResponse.Decision = $SELECT(tTriageResponse.Review.Count() > 0: "HOLD_FOR_REVIEW", 1: "RELEASE")
 
+        // Overwrites the InitialExpression with the time right before sending, in milliseconds.
         Set tTriageResponse.EmittedAt = $ZDATETIME($ZTIMESTAMP, 3, 1, 3)
 
-        Return ..SendRequestAsync("DecisionFileOperation", tTriageResponse, 0)
+        Return ..SendRequestAsync("DecisionFileOperation", tTriageResponse, 0) // 0 = no response expected.
     }
 
 Storage Default

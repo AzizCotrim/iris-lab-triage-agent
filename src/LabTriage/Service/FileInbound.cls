@@ -1,4 +1,4 @@
-/// Reads ORU^R01 files from data/in and sends a TriageRequest to the Process.
+/// Reads HL7 v2 ORU^R01 files from the adapter FilePath, builds a TriageRequest and sends it to TargetConfigName.
 Class LabTriage.Service.FileInbound Extends Ens.BusinessService
 {
 
@@ -26,43 +26,43 @@ Class LabTriage.Service.FileInbound Extends Ens.BusinessService
             Return $$$ERROR($$$GeneralError, "Not an HL7 message: "_tFileName)
         }
 
-        Set tMsh = tMsg.GetSegmentAt(1).Name
-        If (tMsh '= "MSH")
+        Set tFirstSegmentName = tMsg.GetSegmentAt(1).Name
+        If (tFirstSegmentName '= "MSH")
         {
-            Return $$$ERROR($$$GeneralError, "First segment is not MSH")
+            Return $$$ERROR($$$GeneralError, "First segment is "_tFirstSegmentName_", expected MSH: "_tFileName)
         }
 
-        Set tMsh91 = tMsg.GetValueAt("1:9.1")
-        Set tMsh92 = tMsg.GetValueAt("1:9.2")
-        If ((tMsh91 '= "ORU") || (tMsh92 '= "R01"))
+        Set tMessageCode = tMsg.GetValueAt("1:9.1")
+        Set tTriggerEvent = tMsg.GetValueAt("1:9.2")
+        If ((tMessageCode '= "ORU") || (tTriggerEvent '= "R01"))
         {
-            Return $$$ERROR($$$GeneralError, "Message type is not ORU^R01")
+            Return $$$ERROR($$$GeneralError, "Message type is "_tMessageCode_"^"_tTriggerEvent_", expected ORU^R01: "_tFileName)
         }
 
         Set tTriageRequest = ##class(LabTriage.Msg.TriageRequest).%New()
         Set tTriageRequest.MessageControlId = tMsg.GetValueAt("1:10")
         Set tTriageRequest.SourceFileName = tFileName
         
-        Set tQtSegments = tMsg.SegCount
-        Set tQtObx = 0
+        Set tSegmentCount = tMsg.SegCount
+        Set tObxCount = 0
 
-        For i = 1:1:tQtSegments
+        For tSegIndex = 1:1:tSegmentCount
         {
-            Set tSegName = tMsg.GetSegmentAt(i).Name
+            Set tSegName = tMsg.GetSegmentAt(tSegIndex).Name
 
             If (tSegName = "PID") {
-                Set tTriageRequest.PatientId = tMsg.GetValueAt(i_":3.1")
+                Set tTriageRequest.PatientId = tMsg.GetValueAt(tSegIndex_":3.1")
             } ElseIf (tSegName = "OBR") {
-                Set tTriageRequest.OrderId = tMsg.GetValueAt(i_":2")
+                Set tTriageRequest.OrderId = tMsg.GetValueAt(tSegIndex_":2")
             } ElseIf (tSegName = "OBX") {
-                Set tQtObx = tQtObx + 1
+                Set tObxCount = tObxCount + 1
 
-                // MVP step 1: only hemoglobin; the other exams come with the exam catalog.
-                If (tMsg.GetValueAt(i_":3.1") = "718-7")
+                // MVP step 1: only hemoglobin (LOINC 718-7) is kept; other OBX are skipped until the exam catalog exists.
+                If (tMsg.GetValueAt(tSegIndex_":3.1") = "718-7")
                 {
                     Set tExamResult = ##class(LabTriage.Msg.ExamResult).%New()
-                    Set tExamResult.LoincCode = tMsg.GetValueAt(i_":3.1")
-                    Set tExamResult.RawValue = tMsg.GetValueAt(i_":5")
+                    Set tExamResult.LoincCode = tMsg.GetValueAt(tSegIndex_":3.1")
+                    Set tExamResult.RawValue = tMsg.GetValueAt(tSegIndex_":5")
                     If ($ISVALIDNUM(tExamResult.RawValue))
                     {
                         Set tExamResult.NumericValue = tExamResult.RawValue
@@ -71,31 +71,31 @@ Class LabTriage.Service.FileInbound Extends Ens.BusinessService
                         Set tExamResult.ReasonCode = "INVALID_VALUE"
                     }
 
-                    Set tExamResult.Unit = tMsg.GetValueAt(i_":6")
-                    Set tExamResult.ReferenceRange = tMsg.GetValueAt(i_":7")
+                    Set tExamResult.Unit = tMsg.GetValueAt(tSegIndex_":6")
+                    Set tExamResult.ReferenceRange = tMsg.GetValueAt(tSegIndex_":7")
 
-                    Set tExamResult.AbnormalFlag = tMsg.GetValueAt(i_":8")
+                    Set tExamResult.AbnormalFlag = tMsg.GetValueAt(tSegIndex_":8")
                     If (tExamResult.AbnormalFlag = "")
                     {
                         Set tExamResult.AbnormalFlag = "N"
                     }
 
-                    Set tExamResult.ResultStatus = tMsg.GetValueAt(i_":11")
-                    Set tExamResult.ObsDateTime = tMsg.GetValueAt(i_":14")
+                    Set tExamResult.ResultStatus = tMsg.GetValueAt(tSegIndex_":11")
+                    Set tExamResult.ObsDateTime = tMsg.GetValueAt(tSegIndex_":14")
 
                     Do tTriageRequest.Exams.Insert(tExamResult)
-                    $$$LOGINFO("Hemoglobin raw value: "_tExamResult.RawValue)
+                    $$$LOGINFO("OBX "_tSegIndex_" hemoglobin (718-7) raw value= "_tExamResult.RawValue_ " MSH-10="_tTriageRequest.MessageControlId)
                 }
             }
         }
 
-        If (tQtObx = 0)
+        If (tObxCount = 0)
         {
-            Return $$$ERROR($$$GeneralError, "Message has no OBX segment")
+            Return $$$ERROR($$$GeneralError, "No OBX segment: "_tFileName)
         }
 
-        $$$LOGINFO("MSH-10="_tTriageRequest.MessageControlId_" patient="_tTriageRequest.PatientId_" order="_tTriageRequest.OrderId_" exams="_tTriageRequest.Exams.Count())
-        
+        $$$LOGINFO("Parsed "_tFileName_": MSH-10="_tTriageRequest.MessageControlId_" patient="_tTriageRequest.PatientId_" order="_tTriageRequest.OrderId_ " OBX="_tObxCount_" exams kept="_tTriageRequest.Exams.Count())
+
         Return ..SendRequestAsync(..TargetConfigName, tTriageRequest)
     }
 
