@@ -4,13 +4,15 @@
 Class LabTriage.Rules.TestCriticalLimits Extends %UnitTest.TestCase
 {
 
-    /// Builds an in-memory exam. The unit defaults to the catalog unit.
+    /// Builds an in-memory exam. RawValue keeps pValue as given; NumericValue is its
+    /// canonical number (e.g. "0.1" becomes .1), or empty when pValue is not a valid number,
+    /// as FileInbound does. The unit defaults to the catalog unit.
     Method NewExam(pLoinc As %String, pValue, pFlag As %String = "N", pUnit As %String = "") As LabTriage.Msg.ExamResult
     {
         Set tExam = ##class(LabTriage.Msg.ExamResult).%New()
         Set tExam.LoincCode = pLoinc
         Set tExam.RawValue = pValue
-        Set tExam.NumericValue = pValue
+        Set tExam.NumericValue = $SELECT($ISVALIDNUM(pValue): +pValue, 1: "")
         Set tExam.AbnormalFlag = pFlag
         If (pUnit = "")
         {
@@ -148,13 +150,12 @@ Class LabTriage.Rules.TestCriticalLimits Extends %UnitTest.TestCase
 
     // ---- Creatinine 2160-0: no low limit, high 4.0 ----
 
-    /// Values below 1 are passed as strings, as FileInbound sets them (NumericValue = RawValue):
-    /// the numeric literal 0.1 is canonical .1 and the reason would read ".1 mg/dL".
     Method TestCreatinineNoLowLimit()
     {
-        Do ..AssertCheck(..NewExam("2160-0", "0.1", "N"), "OK", "")
+        Do ..AssertCheck(..NewExam("2160-0", 0.1, "N"), "OK", "")
     }
 
+    /// RawValue "0.1" with NumericValue .1: the reason shows the value as received.
     Method TestCreatinineNoLowLimitFlagLL()
     {
         Do ..AssertCheck(..NewExam("2160-0", "0.1", "LL"), "CRITICAL", "CRITICAL_LAB_FLAG", .tReason)
@@ -232,6 +233,20 @@ Class LabTriage.Rules.TestCriticalLimits Extends %UnitTest.TestCase
     Method TestUnsupportedExam()
     {
         Do ..AssertCheck(..NewExam("3016-3", 2.1, "N", "mIU/L"), "NOT_EVALUABLE", "")
+    }
+
+    /// Unit different from the catalog unit: NOT_EVALUABLE even beyond the limit with flag HH.
+    Method TestPotassiumUnexpectedUnit()
+    {
+        Do ..AssertCheck(..NewExam("2823-3", 6.8, "HH", "mg/dL"), "NOT_EVALUABLE", "")
+    }
+
+    /// Empty NumericValue: NOT_EVALUABLE, not CRITICAL_LOW ("" compares as 0).
+    Method TestHemoglobinEmptyValue()
+    {
+        Set tExam = ..NewExam("718-7", "", "N")
+        Do $$$AssertEquals(tExam.NumericValue, "", "NumericValue is empty")
+        Do ..AssertCheck(tExam, "NOT_EVALUABLE", "")
     }
 
     /// Same input, same output: the same object twice and an equal second object.
