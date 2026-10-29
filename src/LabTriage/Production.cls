@@ -19,6 +19,9 @@ XData ProductionDefinition
   <Item Name="DecisionFileOperation" ClassName="LabTriage.Operation.DecisionFileOperation" PoolSize="1" Enabled="true">
     <Setting Target="Host" Name="OutputPath">/home/irisowner/dev/data/out/</Setting>
   </Item>
+  <Item Name="AgentOperation" ClassName="LabTriage.Operation.AgentOperation" PoolSize="1" Enabled="true">
+    <Setting Target="Host" Name="TimeoutSeconds">30</Setting>
+  </Item>
 </Production>
 }
 
