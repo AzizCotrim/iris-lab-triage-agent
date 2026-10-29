@@ -1,29 +1,40 @@
 /// Decides whether a valid, non-critical exam is normal or abnormal, from the
-/// laboratory flag and the reference range (OBX-7). Abnormal exams go to the agent.
+/// reference range (OBX-7) and the laboratory flag. Abnormal exams go to the agent.
 Class LabTriage.Util.ReferenceRange
 {
     /// Classifies a valid, non-critical exam against its reference range and flag.
     /// Returns "NORMAL", "ABNORMAL" or "UNPARSEABLE".
+    /// An unreadable range always wins: the exam goes to review, even with an abnormal flag.
     ClassMethod Classify(pExam As LabTriage.Msg.ExamResult) As %String
     {
-        Set tAbnormalFlag = pExam.AbnormalFlag
-        Set tReferenceRange = pExam.ReferenceRange
-        Set tNumericValue = pExam.NumericValue
+        Set tRangeResult = ..ClassifyRange(pExam.ReferenceRange, pExam.NumericValue)
+        If (tRangeResult = "UNPARSEABLE")
+        {
+            Return "UNPARSEABLE"
+        }
 
-        // The laboratory flag wins: H, L and A are the abnormal category.
+        // The laboratory flag wins over a readable range: H, L and A are the abnormal category.
         // TODO (Fri 10-30): read abnormal flags (H, L, A) from the Lookup Table.
+        Set tAbnormalFlag = pExam.AbnormalFlag
         If ((tAbnormalFlag = "H") || (tAbnormalFlag = "L") || (tAbnormalFlag = "A"))
         {
             Return "ABNORMAL"
         }
 
-        // Only a-b, <x and >x are read; anything else (including spaces) is UNPARSEABLE and goes to review.
-        Set tFirstChar = $EXTRACT(tReferenceRange, 1)
+        Return tRangeResult
+    }
+
+    /// Reads a reference range and compares a value with it. Returns "NORMAL", "ABNORMAL" or "UNPARSEABLE".
+    /// Only a-b, <x and >x are read; anything else (including spaces) is UNPARSEABLE.
+    /// Known limitation: a negative lower bound (e.g. -1-5) is not read.
+    ClassMethod ClassifyRange(pReferenceRange As %String, pNumericValue As %Decimal) As %String
+    {
+        Set tFirstChar = $EXTRACT(pReferenceRange, 1)
 
         // <x: normal below x. >x: normal above x. A value equal to x is abnormal.
         If ((tFirstChar = "<") || (tFirstChar = ">"))
         {
-            Set tValueReference = $EXTRACT(tReferenceRange, 2, *)
+            Set tValueReference = $EXTRACT(pReferenceRange, 2, *)
 
             If ('$ISVALIDNUM(tValueReference))
             {
@@ -31,7 +42,7 @@ Class LabTriage.Util.ReferenceRange
             }
 
             // '< means "not less than" (greater or equal); '> means "not greater than" (less or equal).
-            If (((tFirstChar = "<") && (tNumericValue '< tValueReference)) || ((tFirstChar = ">") && (tNumericValue '> tValueReference)))
+            If (((tFirstChar = "<") && (pNumericValue '< tValueReference)) || ((tFirstChar = ">") && (pNumericValue '> tValueReference)))
             {
                 Return "ABNORMAL"
             }
@@ -40,19 +51,17 @@ Class LabTriage.Util.ReferenceRange
         }
 
         // a-b: normal from a to b, bounds included (as in HL7).
-        Set tPartsCount = $LENGTH(tReferenceRange, "-")
-
-        If (tPartsCount = 2)
+        If ($LENGTH(pReferenceRange, "-") = 2)
         {
-            Set tValue1 = $PIECE(tReferenceRange, "-", 1)
-            Set tValue2 = $PIECE(tReferenceRange, "-", 2)
+            Set tValue1 = $PIECE(pReferenceRange, "-", 1)
+            Set tValue2 = $PIECE(pReferenceRange, "-", 2)
 
             If (('$ISVALIDNUM(tValue1)) || ('$ISVALIDNUM(tValue2)))
             {
                 Return "UNPARSEABLE"
             }
 
-            If ((tNumericValue < tValue1) || (tNumericValue > tValue2))
+            If ((pNumericValue < tValue1) || (pNumericValue > tValue2))
             {
                 Return "ABNORMAL"
             }
