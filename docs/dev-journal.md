@@ -132,3 +132,22 @@
   instead of -03:00: unambiguous for judges in any time zone. Spec to be updated.
 - Temporary: valid exams outside the reference range are still released; they go to
   the agent from the agent day on.
+
+  ## 2026-10-29 — Critical rule and alert (work of 10-28 evening)
+
+- Tuesday's milestone reached: 04-critical.hl7 produces out/ALERTS/SYN-ORU-0004.critical.json
+  (potassium CRITICAL_HIGH) and out/CRITICAL/SYN-ORU-0004.final.json.
+- Exam catalog (LabTriage.ExamCatalog) with the 5 exams; every OBX becomes an ExamResult,
+  LOINC outside the catalog gets UNSUPPORTED_EXAM and a warning in the Event Log.
+- CriticalLimits returns CRITICAL, OK or NOT_EVALUABLE. Empty value or a unit different from
+  the catalog unit returns NOT_EVALUABLE. 31 %UnitTest tests (all limits of the 5 exams).
+- ObjectScript evaluates operators strictly left to right, with no precedence:
+  (a = b && c '= d) is read as ((a = b) && c) '= d. Every comparison needs its own parentheses.
+- Unit match is case-sensitive: "mmol/l" is not "mmol/L"; the exam goes to review (fail-safe).
+- The numeric literal 0.1 is written as .1; reasons use RawValue (as the laboratory sent it).
+- Alert and final can share the same emittedAt (same millisecond) when the agent is not called;
+  order is guaranteed by the operation queue (PoolSize 1), not by the timestamp.
+- Files created by the container (uid 51773) cannot be deleted by the host user without an ACL.
+  A stale final from an earlier run stays in another decision folder: start tests from an
+  empty data/out.
+- Running %UnitTest loads only the test classes; the class under test must be compiled first.
