@@ -134,4 +134,26 @@ Class LabTriage.Util.TestReferenceRange Extends %UnitTest.TestCase
         Do ..AssertClassify(..NewExam("<abc", 4.2), "UNPARSEABLE")
     }
 
+    // ---- Unreadable range wins over the flag; a readable range lets the flag count ----
+
+    Method TestFlagHTextRange()
+    {
+        Do ..AssertClassify(..NewExam("negativo", 4.2, "H"), "UNPARSEABLE")
+    }
+
+    Method TestFlagLEmptyRange()
+    {
+        Do ..AssertClassify(..NewExam("", 4.2, "L"), "UNPARSEABLE")
+    }
+
+    Method TestFlagALessThanText()
+    {
+        Do ..AssertClassify(..NewExam("<abc", 4.2, "A"), "UNPARSEABLE")
+    }
+
+    Method TestFlagAReadableRange()
+    {
+        Do ..AssertClassify(..NewExam("3.5-5.1", 4, "A"), "ABNORMAL")
+    }
+
 }
