@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lookupTable>
+<entry table="LabTriage.FlagCategory" key="N">NORMAL</entry>
+<entry table="LabTriage.FlagCategory" key="H">ABNORMAL</entry>
+<entry table="LabTriage.FlagCategory" key="L">ABNORMAL</entry>
+<entry table="LabTriage.FlagCategory" key="A">ABNORMAL</entry>
+<entry table="LabTriage.FlagCategory" key="HH">CRITICAL</entry>
+<entry table="LabTriage.FlagCategory" key="LL">CRITICAL</entry>
+<entry table="LabTriage.FlagCategory" key="AA">CRITICAL</entry>
+</lookupTable>

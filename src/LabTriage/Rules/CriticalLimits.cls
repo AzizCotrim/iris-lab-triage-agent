@@ -1,6 +1,6 @@
-/// Decides whether a valid exam is critical, from the exam catalog limits
-/// and the laboratory flag. Limits are fictional and exclusive: a value equal
-/// to the limit is not critical.
+/// Decides whether a valid exam is critical, from the exam catalog limits and the laboratory
+/// flag (category from the Lookup Table LabTriage.FlagCategory). Limits are fictional and
+/// exclusive: a value equal to the limit is not critical.
 Class LabTriage.Rules.CriticalLimits
 {
     /// Deterministic critical-value rule. Returns "CRITICAL", "OK" or "NOT_EVALUABLE".
@@ -19,7 +19,7 @@ Class LabTriage.Rules.CriticalLimits
             Return tReturn
         }
 
-        // NEW: the rule only evaluates what it can compare: a numeric value in the catalog unit.
+        // The rule only evaluates what it can compare: a numeric value in the catalog unit.
         If ((pExam.NumericValue = "") || (pExam.Unit '= tEntry.unit))
         {
             Return "NOT_EVALUABLE"
@@ -36,23 +36,20 @@ Class LabTriage.Rules.CriticalLimits
         If ((tCriticalLow '= "") && (tNumericValue < tCriticalLow))
         {
             Set pReasonCode = "CRITICAL_LOW"
-            // CHANGED: pExam.RawValue instead of tNumericValue
             Set pReason = tName_" "_pExam.RawValue_" "_tUnit_" is below the critical low limit of "_tCriticalLow_" "_tUnit_" (fictional limit)."
             Set tReturn = "CRITICAL"
         } ElseIf ((tCriticalHigh '= "") && (tNumericValue > tCriticalHigh))
         {
             Set pReasonCode = "CRITICAL_HIGH"
-            // CHANGED: pExam.RawValue instead of tNumericValue
             Set pReason = tName_" "_pExam.RawValue_" "_tUnit_" is above the critical high limit of "_tCriticalHigh_" "_tUnit_" (fictional limit)."
             Set tReturn = "CRITICAL"
         }
 
         // A value beyond a limit wins over the flag; the flag only counts when no limit was crossed.
-        // TODO (Fri 10-30): read critical flags (HH, LL, AA) from the Lookup Table.
-        If ((tReturn = "OK") && ((pExam.AbnormalFlag = "HH") || (pExam.AbnormalFlag = "LL") || (pExam.AbnormalFlag = "AA")))
+        // Critical flags come from the Lookup Table LabTriage.FlagCategory (HH, LL, AA by default).
+        If ((tReturn = "OK") && (##class(LabTriage.Util.FlagTable).Category(pExam.AbnormalFlag) = "CRITICAL"))
         {
             Set pReasonCode = "CRITICAL_LAB_FLAG"
-            // CHANGED: pExam.RawValue instead of tNumericValue
             Set pReason = tName_" "_pExam.RawValue_" "_tUnit_" is within the critical limits, but the laboratory flagged it as "_pExam.AbnormalFlag_"."
             Set tReturn = "CRITICAL"
         }

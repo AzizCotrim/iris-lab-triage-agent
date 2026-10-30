@@ -1,5 +1,6 @@
 /// Decides whether a valid, non-critical exam is normal or abnormal, from the
-/// reference range (OBX-7) and the laboratory flag. Abnormal exams go to the agent.
+/// reference range (OBX-7) and the laboratory flag (category from the Lookup Table
+/// LabTriage.FlagCategory). Abnormal exams go to the agent.
 Class LabTriage.Util.ReferenceRange
 {
     /// Classifies a valid, non-critical exam against its reference range and flag.
@@ -13,10 +14,9 @@ Class LabTriage.Util.ReferenceRange
             Return "UNPARSEABLE"
         }
 
-        // The laboratory flag wins over a readable range: H, L and A are the abnormal category.
-        // TODO (Fri 10-30): read abnormal flags (H, L, A) from the Lookup Table.
-        Set tAbnormalFlag = pExam.AbnormalFlag
-        If ((tAbnormalFlag = "H") || (tAbnormalFlag = "L") || (tAbnormalFlag = "A"))
+        // The laboratory flag wins over a readable range. Abnormal flags come from the
+        // Lookup Table LabTriage.FlagCategory (H, L, A by default).
+        If (##class(LabTriage.Util.FlagTable).Category(pExam.AbnormalFlag) = "ABNORMAL")
         {
             Return "ABNORMAL"
         }

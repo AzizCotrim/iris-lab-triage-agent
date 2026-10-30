@@ -42,7 +42,7 @@ Class LabTriage.Service.FileInbound Extends Ens.BusinessService
         Set tTriageRequest = ##class(LabTriage.Msg.TriageRequest).%New()
         Set tTriageRequest.MessageControlId = tMsg.GetValueAt("1:10")
         Set tTriageRequest.SourceFileName = tFileName
-        
+
         Set tSegmentCount = tMsg.SegCount
         Set tObxCount = 0
 
@@ -94,9 +94,9 @@ Class LabTriage.Service.FileInbound Extends Ens.BusinessService
                     } ElseIf ('$ISVALIDNUM(tExamResult.RawValue))
                     {
                         Set tExamResult.ReasonCode = "INVALID_VALUE"
-                    } ElseIf ('$LISTFIND($LISTBUILD("N", "H", "L", "A", "HH", "LL", "AA"), tExamResult.AbnormalFlag))
+                    } ElseIf (##class(LabTriage.Util.FlagTable).Category(tExamResult.AbnormalFlag) = "")
                     {
-                        // TODO (Sat 10-31): read the known flags from the Lookup Table.
+                        // Not in the Lookup Table LabTriage.FlagCategory.
                         Set tExamResult.ReasonCode = "UNKNOWN_FLAG"
                     } Else
                     {
@@ -114,7 +114,7 @@ Class LabTriage.Service.FileInbound Extends Ens.BusinessService
             Return $$$ERROR($$$GeneralError, "No OBX segment: "_tFileName)
         }
 
-        $$$LOGINFO("Parsed "_tFileName_": MSH-10="_tTriageRequest.MessageControlId_" patient="_tTriageRequest.PatientId_" order="_tTriageRequest.OrderId_ " OBX="_tObxCount_" exams kept="_tTriageRequest.Exams.Count())
+        $$$LOGINFO("Parsed "_tFileName_": MSH-10="_tTriageRequest.MessageControlId_" patient="_tTriageRequest.PatientId_" order="_tTriageRequest.OrderId_" OBX="_tObxCount_" exams kept="_tTriageRequest.Exams.Count())
 
         Return ..SendRequestAsync(..TargetConfigName, tTriageRequest)
     }
