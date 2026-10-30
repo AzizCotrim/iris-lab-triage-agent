@@ -17,9 +17,23 @@ Class LabTriage.Process.TriageProcess Extends Ens.BusinessProcess
         Set tForAgent = ##class(%ListOfObjects).%New()
 
         Set tExamCount = pRequest.Exams.Count()
+
+        // How many times each exam code appears in this message.
+        For tExamIndex = 1:1:tExamCount
+        {
+            Set tCode = pRequest.Exams.GetAt(tExamIndex).LoincCode
+            Set tCodeCount(tCode) = $GET(tCodeCount(tCode)) + 1
+        }
+
         For tExamIndex = 1:1:tExamCount
         {
             Set tExamResult = pRequest.Exams.GetAt(tExamIndex)
+
+            // Duplicates are triaged once per code, after this loop.
+            If (tCodeCount(tExamResult.LoincCode) > 1)
+            {
+                Continue
+            }
 
             Set tExamDecision = ##class(LabTriage.Msg.ExamDecision).%New()
             Set tExamDecision.LoincCode = tExamResult.LoincCode
@@ -35,12 +49,12 @@ Class LabTriage.Process.TriageProcess Extends Ens.BusinessProcess
             } Else
             {
                 // Every valid exam goes through the critical rule first.
-                Set tRuleResult = ##class(LabTriage.Rules.CriticalLimits).Check(tExamResult, .tCode, .tReason)
+                Set tRuleResult = ##class(LabTriage.Rules.CriticalLimits).Check(tExamResult, .tRuleCode, .tRuleReason)
 
                 If (tRuleResult = "CRITICAL")
                 {
-                    Set tExamDecision.ReasonCode = tCode
-                    Set tExamDecision.Reason = tReason
+                    Set tExamDecision.ReasonCode = tRuleCode
+                    Set tExamDecision.Reason = tRuleReason
                     Do tTriageResponse.Critical.Insert(tExamDecision)
                 } ElseIf (tRuleResult = "NOT_EVALUABLE")
                 {
@@ -69,6 +83,22 @@ Class LabTriage.Process.TriageProcess Extends Ens.BusinessProcess
                         Do tTriageResponse.Released.Insert(tExamDecision)
                     }
                 }
+            }
+        }
+
+        // Same exam received more than once: triaged once per code, before the alert,
+        // so a critical duplicate also triggers it.
+        Set tCode = ""
+        For
+        {
+            Set tCode = $ORDER(tCodeCount(tCode))
+            If (tCode = "")
+            {
+                Quit
+            }
+            If (tCodeCount(tCode) > 1)
+            {
+                Do ..TriageDuplicate(pRequest.Exams, tCode, tTriageResponse)
             }
         }
 
@@ -244,6 +274,63 @@ Class LabTriage.Process.TriageProcess Extends Ens.BusinessProcess
             Set tExamDecision.ReasonCode = "AGENT_FALLBACK"
             // Reason is limited to 500 characters (ExamDecision.Reason MAXLEN).
             Set tExamDecision.Reason = $EXTRACT("Sent to review because "_pWhy_".", 1, 500)
+            Do pTriageResponse.Review.Insert(tExamDecision)
+        }
+    }
+
+    /// The same exam came more than once in the message. The critical value wins and the others
+    /// are listed as discarded; with no critical value there is no rule to choose one, so the
+    /// exam goes to review. Either way it appears once, in a single list.
+    /// TODO (delta check): use the most recent value by collection date when history exists.
+    Method TriageDuplicate(pExams As %Collection.ListOfObj, pCode As %String, pTriageResponse As LabTriage.Msg.TriageResponse)
+    {
+        Set tValues = ""
+        Set tName = ""
+        Set tCorrected = 0
+        Set tCritical = ""
+
+        For tIndex = 1:1:pExams.Count()
+        {
+            Set tExamResult = pExams.GetAt(tIndex)
+            If (tExamResult.LoincCode '= pCode)
+            {
+                Continue
+            }
+
+            Set tName = tExamResult.ExamName
+            Set tValues = tValues_$SELECT(tValues = "": "", 1: ", ")_tExamResult.RawValue
+            If (tExamResult.ResultStatus = "C")
+            {
+                Set tCorrected = 1
+            }
+
+            // Only a valid exam can be critical; the first critical one wins.
+            If (('$ISOBJECT(tCritical)) && (tExamResult.ReasonCode = ""))
+            {
+                If (##class(LabTriage.Rules.CriticalLimits).Check(tExamResult, .tRuleCode, .tRuleReason) = "CRITICAL")
+                {
+                    Set tCritical = tExamResult
+                    Set tCriticalCode = tRuleCode
+                    Set tCriticalReason = tRuleReason
+                }
+            }
+        }
+
+        Set tExamDecision = ##class(LabTriage.Msg.ExamDecision).%New()
+        Set tExamDecision.LoincCode = pCode
+        Set tExamDecision.ExamName = tName
+        Set tExamDecision.DecidedBy = "RULE"
+        Set tExamDecision.Corrected = tCorrected
+
+        If ($ISOBJECT(tCritical))
+        {
+            Set tExamDecision.ReasonCode = tCriticalCode
+            Set tExamDecision.Reason = $EXTRACT(tCriticalReason_" Same exam received more than once (values: "_tValues_"); the critical value wins and the others are discarded.", 1, 500)
+            Do pTriageResponse.Critical.Insert(tExamDecision)
+        } Else
+        {
+            Set tExamDecision.ReasonCode = "DUPLICATE_EXAM"
+            Set tExamDecision.Reason = $EXTRACT("Same exam received more than once (values: "_tValues_"); there is no rule to choose one.", 1, 500)
             Do pTriageResponse.Review.Insert(tExamDecision)
         }
     }
