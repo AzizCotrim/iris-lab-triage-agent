@@ -37,6 +37,14 @@ Class LabTriage.Operation.DecisionFileOperation Extends Ens.BusinessOperation
 
         Set tAgent = {}
         Do tAgent.%Set("called", pRequest.AgentCalled, "boolean")
+        If (pRequest.AgentCalled)
+        {
+            Do tAgent.%Set("attempts", pRequest.AgentAttempts, "number")
+            Do tAgent.%Set("status", pRequest.AgentStatus)
+            Do tAgent.%Set("latencyMs", pRequest.AgentLatencyMs, "number")
+            Do tAgent.%Set("provider", pRequest.AgentProvider)
+            Do tAgent.%Set("model", pRequest.AgentModel)
+        }
         Do tJson.%Set("agent", tAgent)
 
         // EmittedAt is stored in UTC as "YYYY-MM-DD hh:mm:ss.fff"; written as ISO 8601 with "T" and "Z".

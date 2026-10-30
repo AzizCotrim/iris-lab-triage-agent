@@ -31,6 +31,25 @@ Class LabTriage.Msg.TriageResponse Extends Ens.Request
     /// When the Process emitted this output, in UTC.
     Property EmittedAt As %TimeStamp [ InitialExpression = {$ZDATETIME($ZTIMESTAMP, 3)} ];
 
+    /// Number of calls made to the agent for this message (0, 1 or 2).
+    Property AgentAttempts As %Integer [ InitialExpression = 0 ];
+
+    /// Technical status of the last call (OK, TIMEOUT, ...) or INVALID_ANSWER
+    /// when the last answer broke the contract.
+    Property AgentStatus As %String;
+
+    /// Sum of the LLM time of all calls, in milliseconds.
+    Property AgentLatencyMs As %Integer;
+
+    /// Provider of the last call (gemini, simulation or replay).
+    Property AgentProvider As %String;
+
+    /// Model of the last call.
+    Property AgentModel As %String(MAXLEN = 100);
+
+    /// First 500 characters of the last raw answer, for audit. Never sent to the output file.
+    Property AgentRawExcerpt As %String(MAXLEN = 500);
+
 Storage Default
 {
 <Data name="TriageResponseDefaultData">
@@ -64,6 +83,24 @@ Storage Default
 </Value>
 <Value name="10">
 <Value>EmittedAt</Value>
+</Value>
+<Value name="11">
+<Value>AgentAttempts</Value>
+</Value>
+<Value name="12">
+<Value>AgentStatus</Value>
+</Value>
+<Value name="13">
+<Value>AgentLatencyMs</Value>
+</Value>
+<Value name="14">
+<Value>AgentProvider</Value>
+</Value>
+<Value name="15">
+<Value>AgentModel</Value>
+</Value>
+<Value name="16">
+<Value>AgentRawExcerpt</Value>
 </Value>
 </Data>
 <DefaultData>TriageResponseDefaultData</DefaultData>

@@ -112,9 +112,10 @@ Class LabTriage.Process.TriageProcess Extends Ens.BusinessProcess
         Return ..SendRequestAsync("DecisionFileOperation", tTriageResponse, 0) // 0 = no response expected.
     }
 
-    /// Sends the abnormal exams to the agent (one call), validates the answer against the
-    /// contract and puts each exam in the released or review list. Any technical failure or
-    /// invalid answer sends all these exams to review (FALLBACK). Never releases on error.
+    /// Sends the abnormal exams to the agent and fills the lists from its answer.
+    /// At most 2 calls per message: a contract violation, a timeout, a provider error or an
+    /// empty answer gets one corrective retry; a rate limit or a missing/invalid key falls back
+    /// at once. Anything that is still not a valid answer sends the exams to review (FALLBACK).
     Method TriageWithAgent(pExams As %ListOfObjects, pTriageResponse As LabTriage.Msg.TriageResponse)
     {
         // Codes sent to the agent: flaggedExams may only use these.
@@ -124,41 +125,83 @@ Class LabTriage.Process.TriageProcess Extends Ens.BusinessProcess
             Do tSentCodes.%Push(pExams.GetAt(tIndex).LoincCode)
         }
 
-        Set tAgentRequest = ##class(LabTriage.Msg.AgentRequest).%New()
-        Set tAgentRequest.Payload = ##class(LabTriage.Util.Sanitizer).BuildPayload(pExams)
-        Set tAgentRequest.Attempt = 1
-
+        Set tPayload = ##class(LabTriage.Util.Sanitizer).BuildPayload(pExams)
         Set pTriageResponse.AgentCalled = 1
+        Set pTriageResponse.AgentLatencyMs = 0
 
-        // Waits up to 70 s: longer than the AgentOperation timeout (30 s), as the spec asks.
-        Set tSC = ..SendRequestSync("AgentOperation", tAgentRequest, .tAgentResponse, 70)
+        Set tPreviousAnswer = ""
+        Set tViolation = ""
+        Set tWhy = ""
 
-        // $GET: on a failed call the response variable may not exist at all.
-        If (($$$ISERR(tSC)) || ('$ISOBJECT($GET(tAgentResponse))))
+        For tAttempt = 1:1:2
         {
-            Do ..AddFallback(pExams, pTriageResponse, "the agent call failed ("_$SYSTEM.Status.GetErrorText(tSC)_")")
-            Return
+            Set tAgentRequest = ##class(LabTriage.Msg.AgentRequest).%New()
+            Set tAgentRequest.Payload = tPayload
+            Set tAgentRequest.Attempt = tAttempt
+            Set tAgentRequest.PreviousAnswer = tPreviousAnswer
+            Set tAgentRequest.Violation = tViolation
+
+            // Kill: on a failed call the response variable must not keep the previous answer.
+            Kill tAgentResponse
+            Set pTriageResponse.AgentAttempts = tAttempt
+
+            // Waits up to 70 s: longer than the AgentOperation timeout (30 s), as the spec asks.
+            Set tSC = ..SendRequestSync("AgentOperation", tAgentRequest, .tAgentResponse, 70)
+
+            // No answer at all within the wait time: treated as a timeout (one retry).
+            If (($$$ISERR(tSC)) || ('$ISOBJECT($GET(tAgentResponse))))
+            {
+                Set pTriageResponse.AgentStatus = "TIMEOUT"
+                Set tWhy = "the agent call failed ("_$SYSTEM.Status.GetErrorText(tSC)_")"
+                Set tPreviousAnswer = ""
+                Set tViolation = ""
+                Continue
+            }
+
+            Set pTriageResponse.AgentStatus = tAgentResponse.Status
+            Set pTriageResponse.AgentProvider = tAgentResponse.Provider
+            Set pTriageResponse.AgentModel = tAgentResponse.Model
+            Set pTriageResponse.AgentLatencyMs = pTriageResponse.AgentLatencyMs + tAgentResponse.LatencyMs
+            Set pTriageResponse.AgentRawExcerpt = $EXTRACT(tAgentResponse.RawText, 1, 500)
+
+            If (tAgentResponse.Status '= "OK")
+            {
+                Set tWhy = "agent status "_tAgentResponse.Status_" ("_tAgentResponse.ErrorText_")"
+                // Rate limit and missing or invalid key: repeating would not help.
+                If ((tAgentResponse.Status = "RATE_LIMIT") || (tAgentResponse.Status = "NO_KEY"))
+                {
+                    Quit
+                }
+                // Timeout, provider error, empty answer: the retry resends the same payload.
+                Set tPreviousAnswer = ""
+                Set tViolation = ""
+                Continue
+            }
+
+            If (##class(LabTriage.Util.AgentContract).Validate(tAgentResponse.RawText, tSentCodes, .tDecision, .tReason, .tFlagged, .tNewViolation))
+            {
+                Do ..ApplyAgentDecision(pExams, pTriageResponse, tReason, tFlagged)
+                Return
+            }
+
+            // Contract violation: the retry tells the agent what was wrong.
+            $$$LOGWARNING("Agent answer rejected for MSH-10="_pTriageResponse.MessageControlId_" (attempt "_tAttempt_"): "_tNewViolation)
+            Set pTriageResponse.AgentStatus = "INVALID_ANSWER"
+            Set tWhy = "the agent answer was rejected ("_tNewViolation_")"
+            Set tPreviousAnswer = tAgentResponse.RawText
+            Set tViolation = tNewViolation
         }
 
-        If (tAgentResponse.Status '= "OK")
-        {
-            Do ..AddFallback(pExams, pTriageResponse, "agent status "_tAgentResponse.Status_" ("_tAgentResponse.ErrorText_")")
-            Return
-        }
+        Do ..AddFallback(pExams, pTriageResponse, tWhy)
+    }
 
-        If ('##class(LabTriage.Util.AgentContract).Validate(tAgentResponse.RawText, tSentCodes, .tDecision, .tReason, .tFlagged, .tViolation))
-        {
-            // TODO (Thu 10-29 plan, now Fri): one corrective retry before falling back.
-            $$$LOGWARNING("Agent answer rejected for MSH-10="_pTriageResponse.MessageControlId_": "_tViolation)
-            Do ..AddFallback(pExams, pTriageResponse, "the agent answer was rejected ("_tViolation_")")
-            Return
-        }
-
-        // Valid answer: flagged exams go to review, the others are released, all decided by the agent.
+    /// Valid answer: flagged exams go to review, the others are released, all decided by the agent.
+    Method ApplyAgentDecision(pExams As %ListOfObjects, pTriageResponse As LabTriage.Msg.TriageResponse, pReason As %String, pFlagged As %DynamicArray)
+    {
         Set tFlaggedList = ""
-        For tIndex = 0:1:(tFlagged.%Size() - 1)
+        For tIndex = 0:1:(pFlagged.%Size() - 1)
         {
-            Set tFlaggedList = tFlaggedList_$LISTBUILD(tFlagged.%Get(tIndex))
+            Set tFlaggedList = tFlaggedList_$LISTBUILD(pFlagged.%Get(tIndex))
         }
 
         For tIndex = 1:1:pExams.Count()
@@ -169,7 +212,7 @@ Class LabTriage.Process.TriageProcess Extends Ens.BusinessProcess
             Set tExamDecision.LoincCode = tExamResult.LoincCode
             Set tExamDecision.ExamName = tExamResult.ExamName
             Set tExamDecision.DecidedBy = "AGENT"
-            Set tExamDecision.Reason = tReason
+            Set tExamDecision.Reason = pReason
 
             If ($LISTFIND(tFlaggedList, tExamResult.LoincCode))
             {
