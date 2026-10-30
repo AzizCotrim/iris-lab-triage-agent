@@ -43,9 +43,8 @@ Class LabTriage.Process.TriageProcess Extends Ens.BusinessProcess
                     Do tTriageResponse.Critical.Insert(tExamDecision)
                 } ElseIf (tRuleResult = "NOT_EVALUABLE")
                 {
-                    // The Service already marks unsupported exams and invalid values, so here
-                    // the rule can only refuse because of a unit mismatch.
-                    // TODO (Fri 10-30): the Service marks UNEXPECTED_UNIT before the Process.
+                    // Defensive: the Service already marks unsupported exams, wrong units and
+                    // invalid values, so the rule should never refuse a valid exam here.
                     Set tExamDecision.ReasonCode = "UNEXPECTED_UNIT"
                     Set tExamDecision.Reason = "Unit "_tExamResult.Unit_" is not the unit expected by the exam catalog."
                     Do tTriageResponse.Review.Insert(tExamDecision)

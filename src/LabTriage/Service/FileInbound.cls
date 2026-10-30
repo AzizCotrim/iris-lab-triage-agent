@@ -81,12 +81,26 @@ Class LabTriage.Service.FileInbound Extends Ens.BusinessService
                 } Else
                 {
                     Set tExamResult.ExamName = tEntry.name
-                    If ($ISVALIDNUM(tExamResult.RawValue))
+
+                    // First problem found wins: the exam has a single ReasonCode.
+                    // C (corrected) is triaged as final.
+                    If ((tExamResult.ResultStatus '= "F") && (tExamResult.ResultStatus '= "C"))
                     {
-                        Set tExamResult.NumericValue = tExamResult.RawValue
-                    } Else
+                        Set tExamResult.ReasonCode = "NOT_FINAL"
+                    } ElseIf (tExamResult.Unit '= tEntry.unit)
+                    {
+                        // Case-sensitive on purpose: "mmol/l" is not "mmol/L" (fail-safe).
+                        Set tExamResult.ReasonCode = "UNEXPECTED_UNIT"
+                    } ElseIf ('$ISVALIDNUM(tExamResult.RawValue))
                     {
                         Set tExamResult.ReasonCode = "INVALID_VALUE"
+                    } ElseIf ('$LISTFIND($LISTBUILD("N", "H", "L", "A", "HH", "LL", "AA"), tExamResult.AbnormalFlag))
+                    {
+                        // TODO (Sat 10-31): read the known flags from the Lookup Table.
+                        Set tExamResult.ReasonCode = "UNKNOWN_FLAG"
+                    } Else
+                    {
+                        Set tExamResult.NumericValue = tExamResult.RawValue
                     }
                 }
 

@@ -16,12 +16,14 @@ XData ProductionDefinition
   </Item>
   <Item Name="TriageProcess" Category="" ClassName="LabTriage.Process.TriageProcess" PoolSize="1" Enabled="true" Foreground="false" Comment="" LogTraceEvents="false" Schedule="">
   </Item>
-  <Item Name="DecisionFileOperation" ClassName="LabTriage.Operation.DecisionFileOperation" PoolSize="1" Enabled="true">
+  <Item Name="DecisionFileOperation" Category="" ClassName="LabTriage.Operation.DecisionFileOperation" PoolSize="1" Enabled="true" Foreground="false" Comment="" LogTraceEvents="false" Schedule="">
     <Setting Target="Host" Name="OutputPath">/home/irisowner/dev/data/out/</Setting>
   </Item>
-  <Item Name="AgentOperation" ClassName="LabTriage.Operation.AgentOperation" PoolSize="1" Enabled="true">
+  <Item Name="AgentOperation" Category="" ClassName="LabTriage.Operation.AgentOperation" PoolSize="1" Enabled="true" Foreground="false" Comment="" LogTraceEvents="false" Schedule="">
     <Setting Target="Host" Name="TimeoutSeconds">30</Setting>
     <Setting Target="Host" Name="ReplayPath">/home/irisowner/dev/data/replay/</Setting>
+    <Setting Target="Host" Name="Mode"></Setting>
+    <Setting Target="Host" Name="SimulatedOutcome">HOLD_ALL</Setting>
   </Item>
 </Production>
 }
