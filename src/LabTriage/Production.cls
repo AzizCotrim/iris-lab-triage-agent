@@ -21,6 +21,7 @@ XData ProductionDefinition
   </Item>
   <Item Name="AgentOperation" ClassName="LabTriage.Operation.AgentOperation" PoolSize="1" Enabled="true">
     <Setting Target="Host" Name="TimeoutSeconds">30</Setting>
+    <Setting Target="Host" Name="ReplayPath">/home/irisowner/dev/data/replay/</Setting>
   </Item>
 </Production>
 }

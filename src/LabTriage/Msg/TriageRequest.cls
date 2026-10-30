@@ -20,6 +20,10 @@ Class LabTriage.Msg.TriageRequest Extends Ens.Request
 
     Property ParsingWarnings As list Of %String(MAXLEN = 255);
 
+    /// Version of INSTRUCTIONS. Change it whenever the prompt changes:
+    /// replay recordings are keyed by it, so old recordings stop matching.
+    Parameter PROMPTVERSION = "mvp-1";
+
 Storage Default
 {
 <Data name="TriageRequestDefaultData">

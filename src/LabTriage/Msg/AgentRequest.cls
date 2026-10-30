@@ -10,6 +10,12 @@ Class LabTriage.Msg.AgentRequest Extends Ens.Request
     /// 1 for the first call, 2 for the corrective retry.
     Property Attempt As %Integer [ InitialExpression = 1 ];
 
+    /// Retry only: the answer that was rejected, exactly as returned.
+    Property PreviousAnswer As %String(MAXLEN = "");
+
+    /// Retry only: which contract rule the previous answer broke (from AgentContract).
+    Property Violation As %String(MAXLEN = 500);
+
 Storage Default
 {
 <Data name="AgentRequestDefaultData">
@@ -19,6 +25,12 @@ Storage Default
 </Value>
 <Value name="2">
 <Value>Attempt</Value>
+</Value>
+<Value name="3">
+<Value>PreviousAnswer</Value>
+</Value>
+<Value name="4">
+<Value>Violation</Value>
 </Value>
 </Data>
 <DefaultData>AgentRequestDefaultData</DefaultData>
