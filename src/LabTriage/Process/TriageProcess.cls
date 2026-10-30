@@ -4,136 +4,141 @@
 Class LabTriage.Process.TriageProcess Extends Ens.BusinessProcess
 {
 
-    Method OnRequest(pRequest As LabTriage.Msg.TriageRequest, Output pResponse As %Library.Persistent) As %Status
+        Method OnRequest(pRequest As LabTriage.Msg.TriageRequest, Output pResponse As %Library.Persistent) As %Status
     {
+        // Built outside the Try: the final output is sent even when the triage throws.
         Set tTriageResponse = ##class(LabTriage.Msg.TriageResponse).%New()
-
         Set tTriageResponse.MessageControlId = pRequest.MessageControlId
         Set tTriageResponse.OrderId = pRequest.OrderId
         Set tTriageResponse.PatientId = pRequest.PatientId
         Set tTriageResponse.OutputType = "FINAL"
 
-        // AGENT: valid, non-critical exams outside their reference range wait here for the agent.
-        Set tForAgent = ##class(%ListOfObjects).%New()
+        // Set when the alert step runs, so the alert is never sent twice.
+        Set tAlertTried = 0
 
-        Set tExamCount = pRequest.Exams.Count()
-
-        // How many times each exam code appears in this message. An empty code (no OBX-3.1)
-        // cannot be a subscript; that exam is already UNSUPPORTED_EXAM and is never a duplicate.
-        For tExamIndex = 1:1:tExamCount
+        Try
         {
-            Set tCode = pRequest.Exams.GetAt(tExamIndex).LoincCode
-            If (tCode '= "")
-            {
-                Set tCodeCount(tCode) = $GET(tCodeCount(tCode)) + 1
-            }
-        }
+            // Valid, non-critical exams outside their reference range wait here for the agent.
+            Set tForAgent = ##class(%ListOfObjects).%New()
 
-        For tExamIndex = 1:1:tExamCount
-        {
-            Set tExamResult = pRequest.Exams.GetAt(tExamIndex)
+            Set tExamCount = pRequest.Exams.Count()
 
-            // Duplicates are triaged once per code, after this loop.
-            If ((tExamResult.LoincCode '= "") && (tCodeCount(tExamResult.LoincCode) > 1))
+            // How many times each exam code appears in this message.
+            // An empty code cannot be a subscript, so it is never treated as a duplicate.
+            For tExamIndex = 1:1:tExamCount
             {
-                Continue
+                Set tCode = pRequest.Exams.GetAt(tExamIndex).LoincCode
+                If (tCode '= "")
+                {
+                    Set tCodeCount(tCode) = $GET(tCodeCount(tCode)) + 1
+                }
             }
 
-            Set tExamDecision = ##class(LabTriage.Msg.ExamDecision).%New()
-            Set tExamDecision.LoincCode = tExamResult.LoincCode
-            Set tExamDecision.ExamName = tExamResult.ExamName
-            Set tExamDecision.Corrected = (tExamResult.ResultStatus = "C")
-            Set tExamDecision.DecidedBy = "RULE"
-
-            If (tExamResult.ReasonCode '= "")
+            For tExamIndex = 1:1:tExamCount
             {
-                Set tExamDecision.ReasonCode = tExamResult.ReasonCode
-                Set tExamDecision.Reason = "Exam cannot be evaluated: "_tExamResult.ReasonCode_"."
-                Do tTriageResponse.Review.Insert(tExamDecision)
-            } Else
-            {
-                // Every valid exam goes through the critical rule first.
-                Set tRuleResult = ##class(LabTriage.Rules.CriticalLimits).Check(tExamResult, .tRuleCode, .tRuleReason)
+                Set tExamResult = pRequest.Exams.GetAt(tExamIndex)
 
-                If (tRuleResult = "CRITICAL")
+                // Duplicates are triaged once per code, after this loop.
+                If ((tExamResult.LoincCode '= "") && (tCodeCount(tExamResult.LoincCode) > 1))
                 {
-                    Set tExamDecision.ReasonCode = tRuleCode
-                    Set tExamDecision.Reason = tRuleReason
-                    Do tTriageResponse.Critical.Insert(tExamDecision)
-                } ElseIf (tRuleResult = "NOT_EVALUABLE")
+                    Continue
+                }
+
+                Set tExamDecision = ##class(LabTriage.Msg.ExamDecision).%New()
+                Set tExamDecision.LoincCode = tExamResult.LoincCode
+                Set tExamDecision.ExamName = tExamResult.ExamName
+                Set tExamDecision.Corrected = (tExamResult.ResultStatus = "C")
+                Set tExamDecision.DecidedBy = "RULE"
+
+                If (tExamResult.ReasonCode '= "")
                 {
-                    // Defensive: the Service already marks unsupported exams, wrong units and
-                    // invalid values, so the rule should never refuse a valid exam here.
-                    Set tExamDecision.ReasonCode = "UNEXPECTED_UNIT"
-                    Set tExamDecision.Reason = "Unit "_tExamResult.Unit_" is not the unit expected by the exam catalog."
+                    Set tExamDecision.ReasonCode = tExamResult.ReasonCode
+                    Set tExamDecision.Reason = "Exam cannot be evaluated: "_tExamResult.ReasonCode_"."
                     Do tTriageResponse.Review.Insert(tExamDecision)
                 } Else
                 {
-                    // AGENT: not critical; the reference range decides between the agent and the rule.
-                    Set tRangeResult = ##class(LabTriage.Util.ReferenceRange).Classify(tExamResult)
+                    // Every valid exam goes through the critical rule first.
+                    Set tRuleResult = ##class(LabTriage.Rules.CriticalLimits).Check(tExamResult, .tRuleCode, .tRuleReason)
 
-                    If (tRangeResult = "ABNORMAL")
+                    If (tRuleResult = "CRITICAL")
                     {
-                        Do tForAgent.Insert(tExamResult)
-                    } ElseIf (tRangeResult = "UNPARSEABLE")
+                        Set tExamDecision.ReasonCode = tRuleCode
+                        Set tExamDecision.Reason = tRuleReason
+                        Do tTriageResponse.Critical.Insert(tExamDecision)
+                    } ElseIf (tRuleResult = "NOT_EVALUABLE")
                     {
-                        Set tExamDecision.ReasonCode = "UNPARSEABLE_RANGE"
-                        Set tExamDecision.Reason = "Reference range '"_tExamResult.ReferenceRange_"' cannot be read."
+                        // Defensive: the Service already marks unsupported exams, wrong units and
+                        // invalid values, so the rule should never refuse a valid exam here.
+                        Set tExamDecision.ReasonCode = "UNEXPECTED_UNIT"
+                        Set tExamDecision.Reason = "Unit "_tExamResult.Unit_" is not the unit expected by the exam catalog."
                         Do tTriageResponse.Review.Insert(tExamDecision)
                     } Else
                     {
-                        Set tExamDecision.ReasonCode = "NORMAL"
-                        Set tExamDecision.Reason = "Within reference range."
-                        Do tTriageResponse.Released.Insert(tExamDecision)
+                        // Not critical: the reference range decides between the agent and the rule.
+                        Set tRangeResult = ##class(LabTriage.Util.ReferenceRange).Classify(tExamResult)
+
+                        If (tRangeResult = "ABNORMAL")
+                        {
+                            Do tForAgent.Insert(tExamResult)
+                        } ElseIf (tRangeResult = "UNPARSEABLE")
+                        {
+                            Set tExamDecision.ReasonCode = "UNPARSEABLE_RANGE"
+                            Set tExamDecision.Reason = "Reference range '"_tExamResult.ReferenceRange_"' cannot be read."
+                            Do tTriageResponse.Review.Insert(tExamDecision)
+                        } Else
+                        {
+                            Set tExamDecision.ReasonCode = "NORMAL"
+                            Set tExamDecision.Reason = "Within reference range."
+                            Do tTriageResponse.Released.Insert(tExamDecision)
+                        }
                     }
                 }
             }
+
+            // Same exam received more than once: triaged once per code, before the alert,
+            // so a critical duplicate also triggers it.
+            Set tCode = ""
+            For
+            {
+                Set tCode = $ORDER(tCodeCount(tCode))
+                If (tCode = "")
+                {
+                    Quit
+                }
+                If (tCodeCount(tCode) > 1)
+                {
+                    Do ..TriageDuplicate(pRequest.Exams, tCode, tTriageResponse)
+                }
+            }
+
+            // Critical results do not wait. The alert goes out before the agent is called.
+            // A failed send becomes an exception, so the final output is still emitted.
+            If (tTriageResponse.Critical.Count() > 0)
+            {
+                Set tAlertTried = 1
+                $$$ThrowOnError(..SendCriticalAlert(pRequest, tTriageResponse))
+            }
+
+            // One call for all abnormal exams of this message.
+            If (tForAgent.Count() > 0)
+            {
+                Do ..TriageWithAgent(tForAgent, tTriageResponse)
+            }
+        } Catch tEx
+        {
+            Set tError = tEx.DisplayString()
+            $$$LOGERROR("Triage failed for MSH-10="_pRequest.MessageControlId_": "_tError)
+            Do ..AddPendingToReview(pRequest.Exams, tTriageResponse, "the triage failed ("_tError_")")
         }
 
-        // Same exam received more than once: triaged once per code, before the alert,
-        // so a critical duplicate also triggers it.
-        Set tCode = ""
-        For
+        // Exception before the alert step: the critical exams already found still get their alert first.
+        If (('tAlertTried) && (tTriageResponse.Critical.Count() > 0))
         {
-            Set tCode = $ORDER(tCodeCount(tCode))
-            If (tCode = "")
-            {
-                Quit
-            }
-            If (tCodeCount(tCode) > 1)
-            {
-                Do ..TriageDuplicate(pRequest.Exams, tCode, tTriageResponse)
-            }
-        }
-
-        // Critical results do not wait. The alert goes out before the agent is called.
-        If (tTriageResponse.Critical.Count() > 0)
-        {
-            Set tAlert = ##class(LabTriage.Msg.TriageResponse).%New()
-            Set tAlert.MessageControlId = pRequest.MessageControlId
-            Set tAlert.OrderId = pRequest.OrderId
-            Set tAlert.PatientId = pRequest.PatientId
-            Set tAlert.OutputType = "CRITICAL_ALERT"
-            Set tAlert.Decision = "CRITICAL"
-
-            // The alert carries only the critical list.
-            For tCriticalIndex = 1:1:tTriageResponse.Critical.Count()
-            {
-                Do tAlert.Critical.Insert(tTriageResponse.Critical.GetAt(tCriticalIndex))
-            }
-
-            Set tAlert.EmittedAt = $ZDATETIME($ZTIMESTAMP, 3, 1, 3)
-            Set tSC = ..SendRequestAsync("DecisionFileOperation", tAlert, 0) // 0 = no response expected.
+            Set tSC = ..SendCriticalAlert(pRequest, tTriageResponse)
             If $$$ISERR(tSC)
             {
-                Return tSC
+                $$$LOGSTATUS(tSC)
             }
-        }
-
-        // AGENT: one call for all abnormal exams of this message.
-        If (tForAgent.Count() > 0)
-        {
-            Do ..TriageWithAgent(tForAgent, tTriageResponse)
         }
 
         // The message decision is the most severe one among the lists.
@@ -144,6 +149,62 @@ Class LabTriage.Process.TriageProcess Extends Ens.BusinessProcess
         Set tTriageResponse.EmittedAt = $ZDATETIME($ZTIMESTAMP, 3, 1, 3)
 
         Return ..SendRequestAsync("DecisionFileOperation", tTriageResponse, 0) // 0 = no response expected.
+    }
+
+        /// Sends the CRITICAL_ALERT with a copy of the critical list. Returns the send status.
+    Method SendCriticalAlert(pRequest As LabTriage.Msg.TriageRequest, pTriageResponse As LabTriage.Msg.TriageResponse) As %Status
+    {
+        Set tAlert = ##class(LabTriage.Msg.TriageResponse).%New()
+        Set tAlert.MessageControlId = pRequest.MessageControlId
+        Set tAlert.OrderId = pRequest.OrderId
+        Set tAlert.PatientId = pRequest.PatientId
+        Set tAlert.OutputType = "CRITICAL_ALERT"
+        Set tAlert.Decision = "CRITICAL"
+
+        // The alert carries only the critical list.
+        For tCriticalIndex = 1:1:pTriageResponse.Critical.Count()
+        {
+            Do tAlert.Critical.Insert(pTriageResponse.Critical.GetAt(tCriticalIndex))
+        }
+
+        Set tAlert.EmittedAt = $ZDATETIME($ZTIMESTAMP, 3, 1, 3)
+        Return ..SendRequestAsync("DecisionFileOperation", tAlert, 0) // 0 = no response expected.
+    }
+
+    /// Fail-safe after an exception: every exam whose code is in none of the three lists goes to
+    /// review, decided by FALLBACK, once per code. Uses only $LIST, so an empty code cannot throw here.
+    Method AddPendingToReview(pExams As %Collection.ListOfObj, pTriageResponse As LabTriage.Msg.TriageResponse, pWhy As %String)
+    {
+        // Codes that already have a destination.
+        Set tDecided = ""
+        For tList = pTriageResponse.Critical, pTriageResponse.Review, pTriageResponse.Released
+        {
+            For tIndex = 1:1:tList.Count()
+            {
+                Set tDecided = tDecided_$LISTBUILD(tList.GetAt(tIndex).LoincCode)
+            }
+        }
+
+        For tIndex = 1:1:pExams.Count()
+        {
+            Set tExamResult = pExams.GetAt(tIndex)
+            If ($LISTFIND(tDecided, tExamResult.LoincCode))
+            {
+                Continue
+            }
+            // A pending duplicate is added once: each code appears in exactly one list.
+            Set tDecided = tDecided_$LISTBUILD(tExamResult.LoincCode)
+
+            Set tExamDecision = ##class(LabTriage.Msg.ExamDecision).%New()
+            Set tExamDecision.LoincCode = tExamResult.LoincCode
+            Set tExamDecision.ExamName = tExamResult.ExamName
+            Set tExamDecision.Corrected = (tExamResult.ResultStatus = "C")
+            Set tExamDecision.DecidedBy = "FALLBACK"
+            Set tExamDecision.ReasonCode = "PROCESSING_ERROR"
+            // Reason is limited to 500 characters (ExamDecision.Reason MAXLEN).
+            Set tExamDecision.Reason = $EXTRACT("Sent to review because "_pWhy_".", 1, 500)
+            Do pTriageResponse.Review.Insert(tExamDecision)
+        }
     }
 
     /// Sends the abnormal exams to the agent and fills the lists from its answer.
