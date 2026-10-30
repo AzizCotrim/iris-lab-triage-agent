@@ -3,4 +3,5 @@
 
     zn "IRISAPP"
     do $system.OBJ.LoadDir("/home/irisowner/dev/src","ck",,1)
+    do ##class(Ens.Util.LookupTable).%Import("/home/irisowner/dev/config/FlagCategory.xml","LabTriage.FlagCategory")
     halt
