@@ -8,6 +8,10 @@ Class LabTriage.Agent.TriageAgent Extends %AI.Agent
     /// Default model when LABTRIAGE_MODEL is not set. Tested on build 154 on 10-23.
     Parameter MODEL = "gemini-3.5-flash-lite";
 
+    /// Version of INSTRUCTIONS. Change it whenever the prompt changes:
+    /// replay recordings are keyed by it, so old recordings stop matching.
+    Parameter PROMPTVERSION = "mvp-1";
+
     /// System prompt (MVP version, without the delta check tool).
     XData INSTRUCTIONS [ MimeType = text/markdown ]
     {

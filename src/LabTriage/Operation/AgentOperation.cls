@@ -191,19 +191,75 @@ Class LabTriage.Operation.AgentOperation Extends Ens.BusinessOperation
         }
     }
 
-    /// REPLAY mode: returns the answer recorded for this exact input (written in block 4).
+    /// REPLAY mode: returns the answer recorded for this exact input.
+    /// No recording: NO_KEY, so the Process falls back at once, and the Event Log says why.
     Method Replay(pInput As %String, pResponse As LabTriage.Msg.AgentResponse)
     {
-        // TODO (block 4): read the recording from ReplayPath.
         Set pResponse.Provider = "replay"
-        Set pResponse.Status = "NO_KEY"
-        Set pResponse.ErrorText = "Replay is not implemented yet."
+        Set pResponse.LatencyMs = 0
+        Set tFile = ..ReplayFileName(pInput)
+
+        If ('##class(%File).Exists(tFile))
+        {
+            Set pResponse.Status = "NO_KEY"
+            Set pResponse.ErrorText = "No recorded answer for this input."
+            $$$LOGWARNING("Replay: no recording for this input ("_##class(%File).GetFilename(tFile)_"). This file needs GOOGLE_API_KEY and LABTRIAGE_AGENT_MODE=REAL.")
+            Return
+        }
+
+        Try
+        {
+            Set tStream = ##class(%Stream.FileCharacter).%New()
+            Set tStream.TranslateTable = "UTF8"
+            $$$ThrowOnError(tStream.LinkToFile(tFile))
+            Set tRecord = ##class(%DynamicAbstractObject).%FromJSON(tStream)
+            Set pResponse.Status = "OK"
+            Set pResponse.RawText = tRecord.rawText
+            Set pResponse.Model = tRecord.model
+        } Catch tEx
+        {
+            Set pResponse.Status = "PROVIDER_ERROR"
+            Set pResponse.ErrorText = $EXTRACT("Unreadable replay file "_tFile_": "_$SYSTEM.Status.GetErrorText(tEx.AsStatus()), 1, 500)
+        }
     }
 
-    /// REAL mode: records an answer so REPLAY can return it later (written in block 4).
+    /// REAL mode: records an answer so REPLAY can return it later. Never fails the call.
     Method Record(pInput As %String, pResponse As LabTriage.Msg.AgentResponse)
     {
-        // TODO (block 4): write the recording to ReplayPath.
+        Set tFile = ..ReplayFileName(pInput)
+        If ('##class(%File).DirectoryExists(..ReplayPath))
+        {
+            Do ##class(%File).CreateDirectoryChain(..ReplayPath)
+        }
+
+        // The input is the sanitized payload (no patient data), kept as proof of what was sent.
+        Set tRecord = {}
+        Do tRecord.%Set("promptVersion", ##class(LabTriage.Agent.TriageAgent).#PROMPTVERSION)
+        Do tRecord.%Set("model", pResponse.Model)
+        Do tRecord.%Set("recordedAt", $TRANSLATE($ZDATETIME($ZTIMESTAMP, 3, 1, 3), " ", "T")_"Z")
+        Do tRecord.%Set("input", pInput)
+        Do tRecord.%Set("rawText", pResponse.RawText)
+
+        Set tStream = ##class(%Stream.FileCharacter).%New()
+        Set tStream.TranslateTable = "UTF8"
+        Set tSC = tStream.LinkToFile(tFile)
+        If ($$$ISOK(tSC))
+        {
+            Do tStream.Write(tRecord.%ToJSON())
+            Set tSC = tStream.%Save()
+        }
+        If ($$$ISERR(tSC))
+        {
+            $$$LOGWARNING("Could not record the replay file "_tFile_": "_$SYSTEM.Status.GetErrorText(tSC))
+        }
+    }
+
+    /// Recording file for an input: CRC-32 of the prompt version and the exact input text.
+    /// Same input and same prompt, same file.
+    Method ReplayFileName(pInput As %String) As %String
+    {
+        Set tKey = $ZCRC(##class(LabTriage.Agent.TriageAgent).#PROMPTVERSION_"|"_pInput, 7)
+        Return ..ReplayPath_tKey_".json"
     }
 
     /// Maps an SDK exception to an AgentResponse.Status.
