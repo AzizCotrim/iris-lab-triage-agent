@@ -252,12 +252,15 @@
 - Flag categories come from the Lookup Table LabTriage.FlagCategory (Ens.Util.LookupTable),
   editable in the portal: changing H to CRITICAL turned scenario 16 into CRITICAL_LAB_FLAG
   with no recompile and no restart.
-- Defaults in config/FlagCategory.xml, to be loaded by iris.script with %Import and the table
-  name (replaces the table; without the name it merges); iris.script does not load it yet.
+- Defaults in config/FlagCategory.xml, loaded by iris.script with %Import and the table
+  name (replaces the table; without the name it merges).
   Kept outside src/, because LoadDir also loads *.xml files.
 - An empty key is not allowed (ERROR #5659); the Service turns an empty flag into N first.
   %GetValue with pExists tells an unknown flag from a known one. A missing table makes every
   flag unknown, so every exam goes to review.
+  - Fail-safe review fixes: an OBX with no OBX-3.1 no longer stops the Process (an empty
+  subscript raises <SUBSCRIPT>), and a table value other than NORMAL, ABNORMAL or CRITICAL
+  (e.g. a typo in the portal) counts as an unknown flag.
 
 ### Environment
 - After compiling a Business Service, restart the production: the running job keeps the old
