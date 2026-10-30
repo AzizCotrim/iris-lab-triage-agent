@@ -207,3 +207,65 @@
   contract (one JSON object, both codes flagged) in 865 ms.
 - Before the prompt was loaded, the model answered in Portuguese with its own schema, CRITICAL
   and a treatment suggestion: an example of why the Process validates every answer.
+
+## 2026-10-30 — Agent modes, retry, replay and the remaining MVP rules
+
+- Thursday's and Friday's plans done: simulation, corrective retry, replay, NOT_FINAL /
+  UNEXPECTED_UNIT / UNKNOWN_FLAG in the Service, corrected results, duplicate exams and the
+  flag Lookup Table. Back on schedule.
+- The 20 sample files (01 to 21; 12 is a differential) run in REPLAY mode, which needs no API
+  key; python3 tests/e2e/summary.py lists the outputs. The 18 with output match the spec
+  scenario table; 09 and 10 stay in data/in instead of going to data/error with an .error.json.
+
+### Agent modes
+- AgentOperation has three modes: REAL (Gemini), SIMULATION (configured outcome, provider
+  never called) and REPLAY (answers recorded in REAL mode). The Mode setting wins; when empty,
+  LABTRIAGE_AGENT_MODE decides; when that is empty too, REPLAY, so judges need no key.
+- Corrective retry: at most 2 calls per message. A contract violation, a timeout, a provider
+  error or an empty answer gets one retry (after a violation, the retry carries the previous
+  answer and the violation). RATE_LIMIT and NO_KEY fall back at once.
+- tests/e2e/agent-simulation.sh (written by Claude Code) runs scenario 03 through 8 simulated
+  outcomes: all PASS, and no error path ends in RELEASE.
+- Ens.Director.SetHostSettingValue + UpdateProduction change a setting on the running
+  production without editing the local Production.cls (the class on the server is rewritten).
+  Compiling Production.cls instead resets the settings changed in the portal.
+
+### Replay
+- Every OK answer in REAL mode is recorded in data/replay/<CRC-32>.json, keyed by the prompt
+  version and the exact text sent to the model (payload, plus the correction on a retry).
+  Recording every OK answer, not only valid ones, lets replay reproduce a retry path too.
+- A missing PROMPTVERSION parameter made ##class(...).#PROMPTVERSION return "" without a
+  compile error; recordings were keyed without the version and had to be redone.
+- Scenario 11 (prompt injection in OBX-3.2 and NTE) produces exactly the same payload as
+  scenario 03, so both use the same recording: the injected text never reaches the LLM.
+- No recording for an input: NO_KEY, fallback with one attempt, and an Event Log warning.
+
+### Service and Process
+- The Service marks, first problem wins: UNSUPPORTED_EXAM, NOT_FINAL (C counts as final),
+  UNEXPECTED_UNIT, INVALID_VALUE, UNKNOWN_FLAG. NumericValue is set only when none applies.
+- Corrected results (OBX-11 = C) get "corrected": true in the output.
+- Duplicate exam (same LOINC twice): the critical value wins and the discarded values are
+  listed in the reason; with no critical value, DUPLICATE_EXAM in review. Each exam code
+  appears in exactly one list. Spec invariant to be updated.
+
+### Lookup Table
+- Flag categories come from the Lookup Table LabTriage.FlagCategory (Ens.Util.LookupTable),
+  editable in the portal: changing H to CRITICAL turned scenario 16 into CRITICAL_LAB_FLAG
+  with no recompile and no restart.
+- Defaults in config/FlagCategory.xml, to be loaded by iris.script with %Import and the table
+  name (replaces the table; without the name it merges); iris.script does not load it yet.
+  Kept outside src/, because LoadDir also loads *.xml files.
+- An empty key is not allowed (ERROR #5659); the Service turns an empty flag into N first.
+  %GetValue with pExists tells an unknown flag from a known one. A missing table makes every
+  flag unknown, so every exam goes to review.
+
+### Environment
+- After compiling a Business Service, restart the production: the running job keeps the old
+  code (scenarios 08 and 18 were released by the old FileInbound until the restart).
+- When localhost:52773 does not answer from Windows, the portal works on the WSL IP
+  (hostname -I); the IP changes when WSL restarts.
+- Recreating the container (after changing .env) drops every class compiled after the image
+  build; reload with $system.OBJ.LoadDir, or rebuild with docker compose up -d --build.
+- "Import and Compile" on the src folder in VS Code pushes every local file to the server and
+  clears the "version on the server is newer" warnings.
+- Build 154 logs <METHOD DOES NOT EXIST>Sharding+2^STU at startup; not related to this project.
