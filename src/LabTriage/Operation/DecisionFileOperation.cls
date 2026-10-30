@@ -93,7 +93,12 @@ Class LabTriage.Operation.DecisionFileOperation Extends Ens.BusinessOperation
         For tIndex = 1:1:pDecisions.Count()
         {
             Set tDecision = pDecisions.GetAt(tIndex)
-            Do tArray.%Push({"code": (tDecision.LoincCode), "name": (tDecision.ExamName), "decidedBy": (tDecision.DecidedBy), "reasonCode": (tDecision.ReasonCode), "reason": (tDecision.Reason)})
+            Set tItem = {"code": (tDecision.LoincCode), "name": (tDecision.ExamName), "decidedBy": (tDecision.DecidedBy), "reasonCode": (tDecision.ReasonCode), "reason": (tDecision.Reason)}
+            If (tDecision.Corrected)
+            {
+                Do tItem.%Set("corrected", 1, "boolean")
+            }
+            Do tArray.%Push(tItem)
         }
         Return tArray
     }

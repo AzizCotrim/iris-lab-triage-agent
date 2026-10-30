@@ -24,6 +24,7 @@ Class LabTriage.Process.TriageProcess Extends Ens.BusinessProcess
             Set tExamDecision = ##class(LabTriage.Msg.ExamDecision).%New()
             Set tExamDecision.LoincCode = tExamResult.LoincCode
             Set tExamDecision.ExamName = tExamResult.ExamName
+            Set tExamDecision.Corrected = (tExamResult.ResultStatus = "C")
             Set tExamDecision.DecidedBy = "RULE"
 
             If (tExamResult.ReasonCode '= "")
@@ -210,6 +211,7 @@ Class LabTriage.Process.TriageProcess Extends Ens.BusinessProcess
             Set tExamDecision = ##class(LabTriage.Msg.ExamDecision).%New()
             Set tExamDecision.LoincCode = tExamResult.LoincCode
             Set tExamDecision.ExamName = tExamResult.ExamName
+            Set tExamDecision.Corrected = (tExamResult.ResultStatus = "C")
             Set tExamDecision.DecidedBy = "AGENT"
             Set tExamDecision.Reason = pReason
 
@@ -237,6 +239,7 @@ Class LabTriage.Process.TriageProcess Extends Ens.BusinessProcess
             Set tExamDecision = ##class(LabTriage.Msg.ExamDecision).%New()
             Set tExamDecision.LoincCode = tExamResult.LoincCode
             Set tExamDecision.ExamName = tExamResult.ExamName
+            Set tExamDecision.Corrected = (tExamResult.ResultStatus = "C")
             Set tExamDecision.DecidedBy = "FALLBACK"
             Set tExamDecision.ReasonCode = "AGENT_FALLBACK"
             // Reason is limited to 500 characters (ExamDecision.Reason MAXLEN).

@@ -17,6 +17,9 @@ Class LabTriage.Msg.ExamDecision Extends (%SerialObject, %XML.Adaptor)
     /// MAXLEN follows the Process validation limit for the agent reason (500).
     Property Reason As %String(MAXLEN = 500);
 
+    /// Whether the laboratory corrected this result (OBX-11 = C). A corrected result is triaged as final.
+    Property Corrected As %Boolean [ InitialExpression = 0 ];
+
 Storage Default
 {
 <Data name="ExamDecisionState">
@@ -34,6 +37,9 @@ Storage Default
 </Value>
 <Value name="5">
 <Value>Reason</Value>
+</Value>
+<Value name="6">
+<Value>Corrected</Value>
 </Value>
 </Data>
 <State>ExamDecisionState</State>
