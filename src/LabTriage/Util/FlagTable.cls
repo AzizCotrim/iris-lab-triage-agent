@@ -17,7 +17,13 @@ Class LabTriage.Util.FlagTable
             Return ""
         }
         Set tCategory = ##class(Ens.Util.LookupTable).%GetValue(..#TABLE, pFlag, .tExists)
-        Return $SELECT(tExists: tCategory, 1: "")
+
+        // Any value other than the three categories (e.g. a typo in the portal) counts as unknown: fail-safe.
+        If (('tExists) || ('$LISTFIND($LISTBUILD("NORMAL", "ABNORMAL", "CRITICAL"), tCategory)))
+        {
+            Return ""
+        }
+        Return tCategory
     }
 
 }

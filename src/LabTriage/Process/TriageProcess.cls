@@ -18,11 +18,15 @@ Class LabTriage.Process.TriageProcess Extends Ens.BusinessProcess
 
         Set tExamCount = pRequest.Exams.Count()
 
-        // How many times each exam code appears in this message.
+        // How many times each exam code appears in this message. An empty code (no OBX-3.1)
+        // cannot be a subscript; that exam is already UNSUPPORTED_EXAM and is never a duplicate.
         For tExamIndex = 1:1:tExamCount
         {
             Set tCode = pRequest.Exams.GetAt(tExamIndex).LoincCode
-            Set tCodeCount(tCode) = $GET(tCodeCount(tCode)) + 1
+            If (tCode '= "")
+            {
+                Set tCodeCount(tCode) = $GET(tCodeCount(tCode)) + 1
+            }
         }
 
         For tExamIndex = 1:1:tExamCount
@@ -30,7 +34,7 @@ Class LabTriage.Process.TriageProcess Extends Ens.BusinessProcess
             Set tExamResult = pRequest.Exams.GetAt(tExamIndex)
 
             // Duplicates are triaged once per code, after this loop.
-            If (tCodeCount(tExamResult.LoincCode) > 1)
+            If ((tExamResult.LoincCode '= "") && (tCodeCount(tExamResult.LoincCode) > 1))
             {
                 Continue
             }
