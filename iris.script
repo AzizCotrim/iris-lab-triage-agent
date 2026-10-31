@@ -4,4 +4,7 @@
     zn "IRISAPP"
     do $system.OBJ.LoadDir("/home/irisowner/dev/src","ck",,1)
     do ##class(Ens.Util.LookupTable).%Import("/home/irisowner/dev/config/FlagCategory.xml","LabTriage.FlagCategory")
+    // Starts the production every time IRIS starts (container start), not only now.
+    set sc = ##class(Ens.Director).SetAutoStart("LabTriage.Production")
+    if 'sc { write !,"SetAutoStart failed: ",$system.Status.GetErrorText(sc),! do $system.Process.Terminate(,1) }
     halt
