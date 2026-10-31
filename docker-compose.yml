@@ -1,10 +1,28 @@
 services:
+  # One-shot: makes the bind-mounted data folders writable by irisowner (uid 51773).
+  init-perms:
+    image: busybox:1.36
+    user: "0:0"
+    volumes:
+      - ./data:/data
+    command:
+      - sh
+      - -c
+      - >-
+        mkdir -p /data/in /data/out /data/error /data/archive /data/replay &&
+        chmod 0777 /data/in /data/out /data/error /data/archive /data/replay &&
+        find /data/replay -type f -exec chmod 0666 {} +
+
   iris:
     build:
       context: .
       dockerfile: Dockerfile
+    depends_on:
+      init-perms:
+        condition: service_completed_successfully
     env_file:
-      - .env
+      - path: .env
+        required: false
     restart: unless-stopped
     environment:
       - ISC_CPF_MERGE_FILE=/home/irisowner/dev/merge.cpf

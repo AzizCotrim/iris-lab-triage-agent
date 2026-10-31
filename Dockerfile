@@ -15,3 +15,7 @@ RUN --mount=type=bind,src=.,dst=. \
     iris merge IRIS /home/irisowner/dev/merge.cpf && \
     iris session IRIS < iris.script && \
     iris stop IRIS quietly
+
+# iris-main writes iris-main.log in its cwd; /home/irisowner/dev is the bind-mounted repo,
+# which irisowner (uid 51773) cannot write on a fresh clone.
+WORKDIR /home/irisowner
