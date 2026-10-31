@@ -272,3 +272,39 @@
 - "Import and Compile" on the src folder in VS Code pushes every local file to the server and
   clears the "version on the server is newer" warnings.
 - Build 154 logs <METHOD DOES NOT EXIST>Sharding+2^STU at startup; not related to this project.
+
+## 2026-10-31 — Fail-safe on exceptions, rejected files and safe output names
+
+- Saturday's plan done: exception fail-safe, malformed files, safe output file names, style batch
+  and the end-to-end test of the 20 samples (tests/e2e/samples.sh, 20/20 in REPLAY, about 50 s).
+
+### Exception fail-safe
+- TriageProcess.OnRequest wraps the triage in Try/Catch. Exams whose code is in none of the three
+  lists go to review (FALLBACK, PROCESSING_ERROR), once per code; the final output is always emitted.
+- A critical alert not sent yet still goes out before the final output (tAlertTried); a failed alert
+  send becomes an exception, so the final output is not lost.
+- Known limitation: an exam the critical rule had not evaluated yet when the exception happened goes
+  to review, not to CRITICAL.
+- Tested by hand with a temporary Throw in three places (before the count, before duplicates, before
+  the agent) on sample 13.
+- Empty LOINC no longer breaks the duplicate count (no empty subscript).
+
+### Rejected files
+- FileInbound no longer returns an error for an invalid file: it sends a RejectedFile to the new
+  ErrorFileOperation and returns OK, so the adapter archives the input instead of skipping it forever.
+- data/error gets a copy of the file (identical, checked with cmp) and <file>.error.json with reason,
+  MSH-10 and PID-3 (null when absent) and receivedAt in UTC.
+- Sample 09 (no MSH): ImportFromLibraryStream returns no object, so no MSH-10 and no PID-3.
+
+### Output file names
+- Only [A-Za-z0-9._-] from MSH-10 go into the file name, no leading dots, max 100, NO-MSH10 when
+  empty; the JSON keeps the original MSH-10. A repeated MSH-10 gets a UTC timestamp suffix.
+- IDs in TriageRequest and TriageResponse raised from MAXLEN 50 to 255: a longer MSH-10 failed %Save.
+
+### Environment
+- Agent mode REAL (from .env) rewrites data/replay on every OK answer (new recordedAt and wording):
+  run regressions with Mode=REPLAY and git restore data/replay after a REAL run.
+- The file adapter takes about 3 s per file with ConfirmComplete=1: the 20 samples need about a minute.
+- Recreating the container drops what was done after the image build: classes compiled since then
+  and Lookup Table edits made in the portal. The table itself comes back from the image
+  (iris.script imports config/FlagCategory.xml at build time).
