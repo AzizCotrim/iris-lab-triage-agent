@@ -1,33 +1,34 @@
+/// What the TriageProcess sends to the DecisionFileOperation: the CRITICAL_ALERT or the FINAL output.
 Class LabTriage.Msg.TriageResponse Extends Ens.Request
 {
 
     /// MSH-10. Links the alert and the final output.
     Property MessageControlId As %String(MAXLEN = 255);
-    
+
     /// OBR-2.
     Property OrderId As %String(MAXLEN = 255);
-    
+
     /// PID-3.1. Output only; never sent to the LLM.
     Property PatientId As %String(MAXLEN = 255);
-    
-    /// REVIEW_DECISION is added with the review queue.
+
+    /// CRITICAL_ALERT carries only the critical exams and goes out first; FINAL carries every exam.
     Property OutputType As %String(VALUELIST = ",CRITICAL_ALERT,FINAL") [ Required ];
-    
+
     /// Most severe decision among the lists.
     Property Decision As %String(VALUELIST = ",RELEASE,HOLD_FOR_REVIEW,CRITICAL") [ Required ];
-    
-    
+
+    /// Exams released, by the rule (NORMAL) or by the agent (AGENT_RELEASED).
     Property Released As list Of LabTriage.Msg.ExamDecision;
-    
-    
+
+    /// Exams held for human review.
     Property Review As list Of LabTriage.Msg.ExamDecision;
-    
-    
+
+    /// Exams that crossed a critical limit or carry a critical laboratory flag.
     Property Critical As list Of LabTriage.Msg.ExamDecision;
-    
+
     /// Whether the agent was consulted for this message.
     Property AgentCalled As %Boolean [ InitialExpression = 0 ];
-    
+
     /// When the Process emitted this output, in UTC.
     Property EmittedAt As %TimeStamp [ InitialExpression = {$ZDATETIME($ZTIMESTAMP, 3)} ];
 

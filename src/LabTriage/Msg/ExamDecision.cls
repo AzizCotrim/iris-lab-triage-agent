@@ -1,14 +1,18 @@
+/// Where one exam goes in the TriageResponse (released, review or critical) and why.
 Class LabTriage.Msg.ExamDecision Extends (%SerialObject, %XML.Adaptor)
 {
+
+    /// LOINC code of the exam (OBX-3.1).
     Property LoincCode As %String;
-    
+
+    /// Canonical name from the exam catalog; empty for an unsupported exam.
     Property ExamName As %String;
-    
+
     /// Who decided where this exam goes: the deterministic rule, the agent,
-    /// or the fallback after an agent failure.
+    /// or the fallback after an agent failure or a processing error.
     Property DecidedBy As %String(VALUELIST = ",RULE,AGENT,FALLBACK");
 
-    /// Why the exam is in this list (NORMAL, CRITICAL_HIGH, AGENT_FLAGGED, ...).
+    /// Why the exam is in this list (NORMAL, CRITICAL_HIGH, AGENT_FLAGGED, AGENT_FALLBACK, PROCESSING_ERROR, ...).
     /// Same vocabulary as ExamResult.ReasonCode: when an exam cannot be evaluated,
     /// the Process copies that code here.
     Property ReasonCode As %String;

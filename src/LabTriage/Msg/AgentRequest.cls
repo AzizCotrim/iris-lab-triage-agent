@@ -1,6 +1,5 @@
 /// What the TriageProcess sends to the AgentOperation for one call to the agent.
-/// Carries only the sanitized payload: patient identity never travels in this message
-/// (the patient reference for the delta check is a differential, in a separate field).
+/// Carries only the sanitized payload: patient identity never travels in this message.
 Class LabTriage.Msg.AgentRequest Extends Ens.Request
 {
 

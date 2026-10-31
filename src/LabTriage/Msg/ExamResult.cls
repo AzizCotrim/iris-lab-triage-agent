@@ -1,3 +1,4 @@
+/// One OBX result as read by the FileInbound service. Saved inside the TriageRequest.
 Class LabTriage.Msg.ExamResult Extends (%SerialObject, %XML.Adaptor)
 {
 
@@ -22,9 +23,9 @@ Class LabTriage.Msg.ExamResult Extends (%SerialObject, %XML.Adaptor)
     /// Reference range as received in OBX-7 (e.g. 3.5-5.1). Bounds are inclusive.
     Property ReferenceRange As %String;
 
-    /// Abnormal flag from the laboratory, OBX-8 (N, H, L, HH, LL, A, AA).
-    /// An empty flag in the file is stored as N.
-    /// Any other value is stored as received and gets UNKNOWN_FLAG.
+    /// Abnormal flag from the laboratory, OBX-8, as received. Its category (NORMAL, ABNORMAL,
+    /// CRITICAL) comes from the Lookup Table LabTriage.FlagCategory.
+    /// An empty flag in the file is stored as N. A flag not in the table gets UNKNOWN_FLAG.
     Property AbnormalFlag As %String;
 
     /// Result status from OBX-11 (F final, P preliminary, C corrected).
@@ -34,7 +35,7 @@ Class LabTriage.Msg.ExamResult Extends (%SerialObject, %XML.Adaptor)
     /// Observation date and time as received in OBX-14, HL7 format
     /// (e.g. 20261027071500). Not converted.
     Property ObsDateTime As %String;
-    
+
     /// Why this exam cannot be evaluated (INVALID_VALUE, UNEXPECTED_UNIT,
     /// NOT_FINAL, UNSUPPORTED_EXAM, UNKNOWN_FLAG, UNPARSEABLE_RANGE).
     /// Empty means the exam is valid. When set, NumericValue is empty.

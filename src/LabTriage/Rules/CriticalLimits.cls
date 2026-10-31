@@ -15,8 +15,7 @@ Class LabTriage.Rules.CriticalLimits
         Set tEntry = ##class(LabTriage.ExamCatalog).Lookup(pExam.LoincCode)
         If '$ISOBJECT(tEntry)
         {
-            Set tReturn = "NOT_EVALUABLE"
-            Return tReturn
+            Return "NOT_EVALUABLE"
         }
 
         // The rule only evaluates what it can compare: a numeric value in the catalog unit.

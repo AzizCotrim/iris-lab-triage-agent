@@ -1,10 +1,12 @@
 /// Triages each exam of a TriageRequest and sends the TriageResponse to the DecisionFileOperation.
 /// Critical exams: the alert goes out first. Abnormal exams: one call to the agent;
-/// any agent failure or invalid answer sends those exams to review (FALLBACK).
+/// any agent failure or invalid answer sends those exams to review (FALLBACK, AGENT_FALLBACK).
+/// An exception during triage sends every exam still without a destination to review
+/// (FALLBACK, PROCESSING_ERROR); the final output is always emitted.
 Class LabTriage.Process.TriageProcess Extends Ens.BusinessProcess
 {
 
-        Method OnRequest(pRequest As LabTriage.Msg.TriageRequest, Output pResponse As %Library.Persistent) As %Status
+    Method OnRequest(pRequest As LabTriage.Msg.TriageRequest, Output pResponse As %Library.Persistent) As %Status
     {
         // Built outside the Try: the final output is sent even when the triage throws.
         Set tTriageResponse = ##class(LabTriage.Msg.TriageResponse).%New()
@@ -126,7 +128,7 @@ Class LabTriage.Process.TriageProcess Extends Ens.BusinessProcess
             }
         } Catch tEx
         {
-            Set tError = tEx.DisplayString()
+            Set tError = $ZSTRIP(tEx.DisplayString(), "<>W")
             $$$LOGERROR("Triage failed for MSH-10="_pRequest.MessageControlId_": "_tError)
             Do ..AddPendingToReview(pRequest.Exams, tTriageResponse, "the triage failed ("_tError_")")
         }
@@ -151,7 +153,7 @@ Class LabTriage.Process.TriageProcess Extends Ens.BusinessProcess
         Return ..SendRequestAsync("DecisionFileOperation", tTriageResponse, 0) // 0 = no response expected.
     }
 
-        /// Sends the CRITICAL_ALERT with a copy of the critical list. Returns the send status.
+    /// Sends the CRITICAL_ALERT with a copy of the critical list. Returns the send status.
     Method SendCriticalAlert(pRequest As LabTriage.Msg.TriageRequest, pTriageResponse As LabTriage.Msg.TriageResponse) As %Status
     {
         Set tAlert = ##class(LabTriage.Msg.TriageResponse).%New()
@@ -247,7 +249,8 @@ Class LabTriage.Process.TriageProcess Extends Ens.BusinessProcess
             If (($$$ISERR(tSC)) || ('$ISOBJECT($GET(tAgentResponse))))
             {
                 Set pTriageResponse.AgentStatus = "TIMEOUT"
-                Set tWhy = "the agent call failed ("_$SYSTEM.Status.GetErrorText(tSC)_")"
+                // Error texts end with a period; it is dropped so the reason does not end with ".).".
+                Set tWhy = "the agent call failed ("_$ZSTRIP($SYSTEM.Status.GetErrorText(tSC), ">", ".")_")"
                 Set tPreviousAnswer = ""
                 Set tViolation = ""
                 Continue
@@ -261,7 +264,7 @@ Class LabTriage.Process.TriageProcess Extends Ens.BusinessProcess
 
             If (tAgentResponse.Status '= "OK")
             {
-                Set tWhy = "agent status "_tAgentResponse.Status_" ("_tAgentResponse.ErrorText_")"
+                Set tWhy = "agent status "_tAgentResponse.Status_" ("_$ZSTRIP(tAgentResponse.ErrorText, ">", ".")_")"
                 // Rate limit and missing or invalid key: repeating would not help.
                 If ((tAgentResponse.Status = "RATE_LIMIT") || (tAgentResponse.Status = "NO_KEY"))
                 {
@@ -282,7 +285,7 @@ Class LabTriage.Process.TriageProcess Extends Ens.BusinessProcess
             // Contract violation: the retry tells the agent what was wrong.
             $$$LOGWARNING("Agent answer rejected for MSH-10="_pTriageResponse.MessageControlId_" (attempt "_tAttempt_"): "_tNewViolation)
             Set pTriageResponse.AgentStatus = "INVALID_ANSWER"
-            Set tWhy = "the agent answer was rejected ("_tNewViolation_")"
+            Set tWhy = "the agent answer was rejected ("_$ZSTRIP(tNewViolation, ">", ".")_")"
             Set tPreviousAnswer = tAgentResponse.RawText
             Set tViolation = tNewViolation
         }
