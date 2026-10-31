@@ -4,8 +4,9 @@
 #
 # Clones the committed HEAD of this local repo into a temp dir (nothing is pushed), with no
 # .env, starts the stack and checks that: the iris service does not crash-loop, the
-# production starts by itself, irisowner (uid 51773) can write the data folders,
-# /home/irisowner/iris-main.log exists, and tests/e2e/samples.sh passes inside the clone.
+# production starts by itself, the iris service reaches "healthy" (compose healthcheck),
+# irisowner (uid 51773) can write the data folders, /home/irisowner/iris-main.log exists,
+# and tests/e2e/samples.sh passes inside the clone.
 #
 # Stops the stack of this repo first (docker compose down, so the ports are free) and does
 # not start it again. The clone runs under its own compose project name, so its image,
@@ -19,6 +20,7 @@ set -uo pipefail
 REPO_ROOT=$(git -C "$(dirname "$0")" rev-parse --show-toplevel) || exit 2
 PROJECT="labtriage-clean-clone"
 WAIT_SECONDS=180
+HEALTH_WAIT_SECONDS=240
 DEV="/home/irisowner/dev"
 KEEP="${KEEP:-0}"
 
@@ -52,6 +54,13 @@ iris_container_state() {
     local cid
     cid=$(dc ps -aq iris 2>/dev/null | head -n 1)
     [[ -n "$cid" ]] && docker inspect -f '{{.State.Status}} {{.RestartCount}}' "$cid" 2>/dev/null
+}
+
+# Prints the health status of the iris container (starting, healthy, unhealthy), empty if none.
+iris_health() {
+    local cid
+    cid=$(dc ps -aq iris 2>/dev/null | head -n 1)
+    [[ -n "$cid" ]] && docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$cid" 2>/dev/null
 }
 
 print_summary() {
@@ -122,6 +131,7 @@ else
 fi
 
 if dc up -d --build; then
+    up_at=$SECONDS
     record "docker compose up -d --build" PASS
 else
     record "docker compose up -d --build" FAIL
@@ -159,6 +169,19 @@ if [[ -n "$running" ]]; then
     record "production running (state 1)" PASS "$running"
 else
     record "production running (state 1)" FAIL "not running after ${WAIT_SECONDS}s, last status: $(production_status)"
+fi
+
+# Counted from "docker compose up", so start_period (120 s) is inside the budget.
+health=""
+while ((SECONDS - up_at < HEALTH_WAIT_SECONDS)); do
+    health=$(iris_health)
+    [[ "$health" == "healthy" ]] && break
+    sleep 5
+done
+if [[ "$health" == "healthy" ]]; then
+    record "iris service healthy" PASS "after $((SECONDS - up_at)) s"
+else
+    record "iris service healthy" FAIL "status ${health:-none} after ${HEALTH_WAIT_SECONDS}s"
 fi
 
 for d in in out error archive replay; do

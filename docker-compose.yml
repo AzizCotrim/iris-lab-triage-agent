@@ -31,3 +31,19 @@ services:
       - 52773:52773
     volumes:
       - ./:/home/irisowner/dev
+    # The base image check (/irisHealth.sh) fails on this EAP build because the instance
+    # status is "alert" (startup errors unrelated to the app). Healthy here means:
+    # LabTriage.Production is running (state 1) in IRISAPP. "$$" escapes "$" for compose.
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          printf '%s\n'
+          'Set sc=##class(Ens.Director).GetProductionStatus(.n,.s) Write !,"PRODSTATE ",+sc," ",$$Get(n)," ",$$Get(s),!'
+          'Halt'
+          | iris session IRIS -U IRISAPP
+          | grep -qx 'PRODSTATE 1 LabTriage.Production 1'
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 120s
