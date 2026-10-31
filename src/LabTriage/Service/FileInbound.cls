@@ -1,13 +1,18 @@
 /// Reads HL7 v2 ORU^R01 files from the adapter FilePath, builds a TriageRequest and sends it to TargetConfigName.
+/// A file that is not a valid ORU^R01 goes to ErrorTargetConfigName as a RejectedFile, so the adapter
+/// archives it instead of leaving it in FilePath.
 Class LabTriage.Service.FileInbound Extends Ens.BusinessService
 {
 
     Parameter ADAPTER = "EnsLib.File.InboundAdapter";
 
-    Parameter SETTINGS = "TargetConfigName:Basic";
+    Parameter SETTINGS = "TargetConfigName:Basic,ErrorTargetConfigName:Basic";
 
     /// Production item that receives the TriageRequest (the TriageProcess).
     Property TargetConfigName As Ens.DataType.ConfigName;
+
+    /// Production item that receives the RejectedFile (the ErrorFileOperation).
+    Property ErrorTargetConfigName As Ens.DataType.ConfigName;
 
     Method OnProcessInput(pInput As %Stream.Object, Output pOutput As %RegisteredObject, ByRef pHint As %String) As %Status
     {
@@ -18,25 +23,29 @@ Class LabTriage.Service.FileInbound Extends Ens.BusinessService
 
         If $$$ISERR(tSC)
         {
-            Return tSC
+            Return ..Reject(pInput, tFileName, "The file could not be parsed as HL7 ("_$SYSTEM.Status.GetErrorText(tSC)_").")
         }
 
         If '$ISOBJECT(tMsg)
         {
-            Return $$$ERROR($$$GeneralError, "Not an HL7 message: "_tFileName)
+            Return ..Reject(pInput, tFileName, "The file does not contain an HL7 message.")
         }
 
-        Set tFirstSegmentName = tMsg.GetSegmentAt(1).Name
-        If (tFirstSegmentName '= "MSH")
+        Set tFirstSegment = tMsg.GetSegmentAt(1)
+        If '$ISOBJECT(tFirstSegment)
         {
-            Return $$$ERROR($$$GeneralError, "First segment is "_tFirstSegmentName_", expected MSH: "_tFileName)
+            Return ..Reject(pInput, tFileName, "The HL7 message has no segments.")
+        }
+        If (tFirstSegment.Name '= "MSH")
+        {
+            Return ..Reject(pInput, tFileName, "The first segment is "_tFirstSegment.Name_", expected MSH.", "", ..FindPatientId(tMsg))
         }
 
         Set tMessageCode = tMsg.GetValueAt("1:9.1")
         Set tTriggerEvent = tMsg.GetValueAt("1:9.2")
         If ((tMessageCode '= "ORU") || (tTriggerEvent '= "R01"))
         {
-            Return $$$ERROR($$$GeneralError, "Message type is "_tMessageCode_"^"_tTriggerEvent_", expected ORU^R01: "_tFileName)
+            Return ..Reject(pInput, tFileName, "The message type is "_tMessageCode_"^"_tTriggerEvent_", expected ORU^R01.", tMsg.GetValueAt("1:10"), ..FindPatientId(tMsg))
         }
 
         Set tTriageRequest = ##class(LabTriage.Msg.TriageRequest).%New()
@@ -111,12 +120,49 @@ Class LabTriage.Service.FileInbound Extends Ens.BusinessService
 
         If (tObxCount = 0)
         {
-            Return $$$ERROR($$$GeneralError, "No OBX segment: "_tFileName)
+            Return ..Reject(pInput, tFileName, "The message has no OBX segment.", tTriageRequest.MessageControlId, tTriageRequest.PatientId)
         }
 
         $$$LOGINFO("Parsed "_tFileName_": MSH-10="_tTriageRequest.MessageControlId_" patient="_tTriageRequest.PatientId_" order="_tTriageRequest.OrderId_" OBX="_tObxCount_" exams kept="_tTriageRequest.Exams.Count())
 
         Return ..SendRequestAsync(..TargetConfigName, tTriageRequest)
+    }
+
+    /// Sends the file to ErrorTargetConfigName as a RejectedFile and returns the send status.
+    /// An OK status lets the adapter archive the file instead of leaving it in FilePath.
+    Method Reject(pInput As %Stream.Object, pFileName As %String, pReason As %String, pMessageControlId As %String = "", pPatientId As %String = "") As %Status
+    {
+        $$$LOGWARNING("Rejected "_pFileName_": "_pReason)
+
+        Set tRejected = ##class(LabTriage.Msg.RejectedFile).%New()
+        Set tRejected.SourceFileName = pFileName
+        Set tRejected.Reason = $EXTRACT(pReason, 1, 500)
+        Set tRejected.MessageControlId = $EXTRACT(pMessageControlId, 1, 255)
+        Set tRejected.PatientId = $EXTRACT(pPatientId, 1, 255)
+
+        // ImportFromLibraryStream already read the stream: rewind before copying it.
+        Do pInput.Rewind()
+        Set tSC = tRejected.Content.CopyFrom(pInput)
+        If $$$ISERR(tSC)
+        {
+            Return tSC
+        }
+
+        Return ..SendRequestAsync(..ErrorTargetConfigName, tRejected)
+    }
+
+    /// PID-3.1 of the first PID segment, or "" when there is none. Used only for rejected files.
+    ClassMethod FindPatientId(pMsg As EnsLib.HL7.Message) As %String
+    {
+        For tSegIndex = 1:1:pMsg.SegCount
+        {
+            Set tSegment = pMsg.GetSegmentAt(tSegIndex)
+            If (($ISOBJECT(tSegment)) && (tSegment.Name = "PID"))
+            {
+                Return pMsg.GetValueAt(tSegIndex_":3.1")
+            }
+        }
+        Return ""
     }
 
 }
