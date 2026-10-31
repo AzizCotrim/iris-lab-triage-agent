@@ -1,7 +1,7 @@
 Class LabTriage.Msg.TriageRequest Extends Ens.Request
 {
     /// MSH-10. Also links the critical alert and the final output.
-    Property MessageControlId As %String;
+    Property MessageControlId As %String(MAXLEN = 255);
 
     /// When the Service received the file, in UTC (system clock, not MSH-7).
     Property DateTimeReceived As %TimeStamp [ InitialExpression = {$ZDATETIME($ZTIMESTAMP,3)} ];
@@ -11,18 +11,14 @@ Class LabTriage.Msg.TriageRequest Extends Ens.Request
 
     /// PID-3.1. Used in the output and, later, in the history lookup;
     /// never sent to the LLM.
-    Property PatientId As %String;
+    Property PatientId As %String(MAXLEN = 255);
 
     /// OBR-2 (placer order number).
-    Property OrderId As %String;
+    Property OrderId As %String(MAXLEN = 255);
 
     Property Exams As list Of LabTriage.Msg.ExamResult;
 
     Property ParsingWarnings As list Of %String(MAXLEN = 255);
-
-    /// Version of INSTRUCTIONS. Change it whenever the prompt changes:
-    /// replay recordings are keyed by it, so old recordings stop matching.
-    Parameter PROMPTVERSION = "mvp-1";
 
 Storage Default
 {

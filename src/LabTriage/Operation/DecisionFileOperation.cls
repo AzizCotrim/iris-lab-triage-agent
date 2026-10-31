@@ -1,6 +1,8 @@
 /// Writes each TriageResponse as a JSON file under OutputPath:
 /// CRITICAL_ALERT goes to ALERTS/<MSH-10>.critical.json,
 /// FINAL goes to <DECISION>/<MSH-10>.final.json.
+/// MSH-10 comes from the input file, so only safe characters go into the file name,
+/// and a repeated MSH-10 gets a timestamp suffix instead of replacing the earlier output.
 Class LabTriage.Operation.DecisionFileOperation Extends Ens.BusinessOperation
 {
 
@@ -17,11 +19,28 @@ Class LabTriage.Operation.DecisionFileOperation Extends Ens.BusinessOperation
         If (pRequest.OutputType = "CRITICAL_ALERT")
         {
             Set tSubdir = "ALERTS"
-            Set tFileName = pRequest.MessageControlId_".critical.json"
+            Set tExtension = ".critical.json"
         } Else
         {
             Set tSubdir = pRequest.Decision
-            Set tFileName = pRequest.MessageControlId_".final.json"
+            Set tExtension = ".final.json"
+        }
+
+        Set tDir = ..OutputPath_tSubdir_"/"
+        If '##class(%File).DirectoryExists(tDir)
+        {
+            If '##class(%File).CreateDirectoryChain(tDir)
+            {
+                Return $$$ERROR($$$GeneralError, "Could not create folder "_tDir)
+            }
+        }
+
+        Set tBaseName = ..SafeName(pRequest.MessageControlId)
+        Set tFileName = tBaseName_tExtension
+        // Same MSH-10 received again: a UTC timestamp suffix keeps the earlier output.
+        If ##class(%File).Exists(tDir_tFileName)
+        {
+            Set tFileName = tBaseName_"_"_$TRANSLATE($ZDATETIME($ZTIMESTAMP, 8, 1, 3), " :.", "")_tExtension
         }
 
         // 2. JSON content
@@ -51,15 +70,6 @@ Class LabTriage.Operation.DecisionFileOperation Extends Ens.BusinessOperation
         Do tJson.%Set("emittedAt", $TRANSLATE(pRequest.EmittedAt, " ", "T")_"Z")
 
         // 3. Write to a temporary file, then rename, so nobody reads a half-written file
-        Set tDir = ..OutputPath_tSubdir_"/"
-        If '##class(%File).DirectoryExists(tDir)
-        {
-            If '##class(%File).CreateDirectoryChain(tDir)
-            {
-                Return $$$ERROR($$$GeneralError, "Could not create folder "_tDir)
-            }
-        }
-
         Set tTmpFileName = tDir_tFileName_".tmp"
         Set tStream = ##class(%Stream.FileCharacter).%New()
         Set tStream.TranslateTable = "UTF8"
@@ -84,6 +94,19 @@ Class LabTriage.Operation.DecisionFileOperation Extends Ens.BusinessOperation
 
         $$$LOGINFO("Wrote "_tSubdir_"/"_tFileName)
         Return $$$OK
+    }
+
+    /// MSH-10 as a file name: only letters A-Z/a-z, digits, ".", "_" and "-", no leading dots,
+    /// at most 100 characters. Returns NO-MSH10 when nothing is left.
+    ClassMethod SafeName(pId As %String) As %String
+    {
+        Set tAllowed = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-"
+        // Inner $TRANSLATE leaves only the characters that are not allowed; the outer one removes them.
+        Set tName = $TRANSLATE(pId, $TRANSLATE(pId, tAllowed))
+        // No leading dots: no hidden files and no "..".
+        Set tName = $ZSTRIP(tName, "<", ".")
+        Set tName = $EXTRACT(tName, 1, 100)
+        Return $SELECT(tName = "": "NO-MSH10", 1: tName)
     }
 
     /// Converts a list of ExamDecision objects into a JSON array, one JSON object per exam.

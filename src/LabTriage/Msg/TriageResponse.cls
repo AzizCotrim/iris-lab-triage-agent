@@ -2,13 +2,13 @@ Class LabTriage.Msg.TriageResponse Extends Ens.Request
 {
 
     /// MSH-10. Links the alert and the final output.
-    Property MessageControlId As %String;
+    Property MessageControlId As %String(MAXLEN = 255);
     
     /// OBR-2.
-    Property OrderId As %String;
+    Property OrderId As %String(MAXLEN = 255);
     
     /// PID-3.1. Output only; never sent to the LLM.
-    Property PatientId As %String;
+    Property PatientId As %String(MAXLEN = 255);
     
     /// REVIEW_DECISION is added with the review queue.
     Property OutputType As %String(VALUELIST = ",CRITICAL_ALERT,FINAL") [ Required ];
