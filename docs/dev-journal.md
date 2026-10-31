@@ -23,10 +23,12 @@
 - Cause: the repo is mounted at /home/irisowner/dev and irisowner (uid 51773) cannot write to a folder owned by the host user.
 - Dev workaround: create iris-main.log, chmod a+rwx on the repo root, ACL for uid 51773 on data/in, out, error, archive.
 - Git does not store permissions or ACLs: a clean clone hits the same problem. To fix before 01/11.
+- Fixed on 10-31 (part 2): WORKDIR outside the bind mount and the init-perms service.
 
 ### Compose
 - env_file: .env is required; docker compose fails if the file does not exist. Judges need to create it
   from .env.example, even in replay mode without an API key.
+- Fixed on 10-31 (part 2): env_file is optional (required: false); with no .env the agent runs REPLAY.
 - Changed restart policy from the template's "always" to "unless-stopped": during the iris-main.log
   permission loop the container restarted 9 times on its own.
 
@@ -258,7 +260,7 @@
 - An empty key is not allowed (ERROR #5659); the Service turns an empty flag into N first.
   %GetValue with pExists tells an unknown flag from a known one. A missing table makes every
   flag unknown, so every exam goes to review.
-  - Fail-safe review fixes: an OBX with no OBX-3.1 no longer stops the Process (an empty
+- Fail-safe review fixes: an OBX with no OBX-3.1 no longer stops the Process (an empty
   subscript raises <SUBSCRIPT>), and a table value other than NORMAL, ABNORMAL or CRITICAL
   (e.g. a typo in the portal) counts as an unknown flag.
 
@@ -308,3 +310,54 @@
 - Recreating the container drops what was done after the image build: classes compiled since then
   and Lookup Table edits made in the portal. The table itself comes back from the image
   (iris.script imports config/FlagCategory.xml at build time).
+
+## 2026-10-31 (part 2) — Clean clone, healthcheck and README v1
+
+- Sunday's plan (clean clone, as a judge would run it) done on Saturday, plus README v1.
+  tests/e2e/clean-clone-check.sh: 13/13 PASS.
+
+### Clean clone
+- A fresh clone with no .env reproduced the 10-23 permission problem: a `Restarting (134)` loop
+  (iris-main aborts). In the clone the root and data/* are 755 and owned by the host user, so
+  uid 51773 can write nowhere. My working repo hid it (root 777, ACLs with defaults on data/*).
+- Dockerfile: WORKDIR /home/irisowner after the build step, so iris-main.log is written inside the
+  image, not in the bind mount. The repo root no longer needs to be writable.
+- docker-compose: one-shot init-perms service (busybox, root): chmod 0777 on data/in, out, error,
+  archive and replay, and chmod 0666 on the replay files; iris starts after it
+  (service_completed_successfully). chmod, not chown: the host user must still write to data/in.
+  No sticky bit: the adapter deletes files created by the host user.
+- iris.script: SetAutoStart("LabTriage.Production") with the status checked (a failure fails the
+  build). The production now starts on every container start.
+- env_file is optional (required: false, needs Compose v2.24+); with no .env the agent runs REPLAY.
+- The replay JSONs were committed as 100755 (created under the default ACL). init-perms drops the
+  x bit, so git showed a mode change on every start. Recommitted as 100644.
+- clean-clone-check.sh clones HEAD of the local repo into a temp dir (nothing is pushed), with no
+  .env, runs up --build, waits for the production and for healthy, checks write access as uid
+  51773, runs samples.sh and cleans up. It stops this repo's stack first.
+
+### Base image
+- iris-2026.3.0AI.154.0-docker.tar.gz (also downloaded on 10-23) is a different image
+  (intersystems/iris); the right one is irishealth-community-...-docker.tar.gz. It is a plain tar
+  despite the .gz name, and docker image load accepts both.
+- The image is linux/amd64 only.
+
+### Healthcheck
+- The base image check (/irisHealth.sh) needs the instance status ok or warn. Build 154 leaves it
+  in alert: the Sharding+2^STU error (see 10-30) and "System appears to have failed over from node
+  buildkitsandbox" (IRIS ran during the build under another hostname).
+- Compose healthcheck overridden: healthy means LabTriage.Production is running in IRISAPP
+  (GetProductionStatus state 1).
+
+### Measurements
+- Full build: about 4 min (233 s). The build step bind-mounts the whole repo, so any change, even
+  to the README, rebuilds it.
+- Clean clone, REPLAY: production running after 61 to 90 s, healthy after 92 s.
+- Working repo, REAL: healthy within about 2 min; one earlier run took 207 s (cause not confirmed).
+
+### README v1
+- Base image load and retag, quick start, LLM provider and modes, how to verify, how it works,
+  output examples, known limitations, tests, project structure.
+
+### Next
+- Choose the differentials for 11-02 to 11-05: review queue (Workflow), delta check or audit policy.
+- Update the spec with this week's changes.
