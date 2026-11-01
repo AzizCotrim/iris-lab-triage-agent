@@ -4,6 +4,13 @@
     zn "IRISAPP"
     do $system.OBJ.LoadDir("/home/irisowner/dev/src","ck",,1)
     do ##class(Ens.Util.LookupTable).%Import("/home/irisowner/dev/config/FlagCategory.xml","LabTriage.FlagCategory")
+    // Workflow: role LabReviewer (= name of the Workflow Operation host) with SuperUser and _SYSTEM.
+    // A role with no users fails every task (EnsWfErrNoUsersFound). Each step runs only if needed.
+    set sc = 1
+    for u="SuperUser","_SYSTEM" { if sc,'##class(EnsLib.Workflow.UserDefinition).%ExistsId(u) { set sc = ##class(EnsLib.Workflow.UserDefinition).CreateUser(u) } }
+    if sc,'##class(EnsLib.Workflow.RoleDefinition).%ExistsId("LabReviewer") { set sc = ##class(EnsLib.Workflow.RoleDefinition).CreateRole("LabReviewer") }
+    for u="SuperUser","_SYSTEM" { if sc,'##class(EnsLib.Workflow.RoleMembership).%ExistsId("LabReviewer||"_u) { set sc = ##class(EnsLib.Workflow.RoleDefinition).AddUserToRole("LabReviewer",u) } }
+    if 'sc { write !,"Workflow setup failed: ",$system.Status.GetErrorText(sc),! do $system.Process.Terminate(,1) }
     // Starts the production every time IRIS starts (container start), not only now.
     set sc = ##class(Ens.Director).SetAutoStart("LabTriage.Production")
     if 'sc { write !,"SetAutoStart failed: ",$system.Status.GetErrorText(sc),! do $system.Process.Terminate(,1) }
