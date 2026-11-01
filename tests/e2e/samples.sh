@@ -9,6 +9,11 @@
 # (0021) and the error files of the malformed samples (09 and 10). At the end, Mode goes
 # back to empty.
 #
+# HOLD_FOR_REVIEW messages also open a Workflow review task. The run leaves one open review
+# task per HOLD_FOR_REVIEW sample, to be seen in the Workflow Inbox; the next run completes
+# them with Release (drain-review-tasks.sh) before cleaning data/out. The tasks are not
+# checked here (tests/e2e/workflow.sh does that).
+#
 # Needs the "iris" service up (docker compose up -d) and python3.
 # Usage: tests/e2e/samples.sh
 
@@ -223,6 +228,8 @@ if ! set_agent_mode "REPLAY"; then
     echo "FAIL: could not set Mode=REPLAY"
     exit 1
 fi
+# Before cleaning: the drained tasks write their .review.json into data/out.
+tests/e2e/drain-review-tasks.sh Release || echo "WARNING: could not complete the open review tasks"
 clean_outputs
 if ! drop_samples; then
     echo "FAIL: could not drop the samples into data/in"

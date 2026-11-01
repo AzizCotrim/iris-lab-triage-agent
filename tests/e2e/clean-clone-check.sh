@@ -6,13 +6,14 @@
 # .env, starts the stack and checks that: the iris service does not crash-loop, the
 # production starts by itself, the iris service reaches "healthy" (compose healthcheck),
 # irisowner (uid 51773) can write the data folders, /home/irisowner/iris-main.log exists,
-# and tests/e2e/samples.sh passes inside the clone.
+# and tests/e2e/samples.sh and tests/e2e/workflow.sh pass inside the clone (workflow.sh
+# also proves that iris.script created the LabReviewer role and its Workflow users).
 #
 # Stops the stack of this repo first (docker compose down, so the ports are free) and does
 # not start it again. The clone runs under its own compose project name, so its image,
 # containers and "down -v" never touch the ones of this repo.
 #
-# Needs git, docker compose and python3 (for samples.sh).
+# Needs git, docker compose and python3 (for samples.sh and workflow.sh).
 # Usage: tests/e2e/clean-clone-check.sh       (KEEP=1 leaves the clone and its stack up)
 
 set -uo pipefail
@@ -204,6 +205,14 @@ if (cd "$CLONE" && COMPOSE_PROJECT_NAME="$PROJECT" tests/e2e/samples.sh); then
     record "tests/e2e/samples.sh" PASS
 else
     record "tests/e2e/samples.sh" FAIL
+fi
+
+echo
+echo "Running tests/e2e/workflow.sh in the clone..."
+if (cd "$CLONE" && COMPOSE_PROJECT_NAME="$PROJECT" tests/e2e/workflow.sh); then
+    record "tests/e2e/workflow.sh" PASS
+else
+    record "tests/e2e/workflow.sh" FAIL
 fi
 
 print_summary
