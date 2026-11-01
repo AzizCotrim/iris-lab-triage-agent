@@ -361,3 +361,85 @@
 ### Next
 - Choose the differentials for 11-02 to 11-05: review queue (Workflow), delta check or audit policy.
 - Update the spec with this week's changes.
+
+## 2026-11-01 — Human review with Workflow
+
+- Differential chosen: review queue. HOLD_FOR_REVIEW messages become Workflow tasks for the
+  LabReviewer role; the reviewer's action is written to data/out/REVIEWED/<MSH-10>.review.json.
+
+### Workflow in build 154
+- Exported the EnsLib.Workflow classes from the container and read the source, since build 154
+  has diverged from the documentation before. Signatures checked in %Dictionary.CompiledMethod.
+- ShowActionButtons accepts free action names: %Actions="Release,KeepOnHold" shows those two
+  buttons, and the button name comes back as %Action.
+- The Inbox (_DeepSee.UserPortal.Workflow.zen) lists only the tasks of $UserName: the login must
+  be a Workflow user (UserDefinition) in the role.
+- Accept is required before the action: the Inbox calls Engine.%TakeOwnershipForTask on Accept and
+  Engine.%ProcessAction on the button. %ProcessAction needs the task assigned to the user of the
+  Worklist item. When it is not, it returns $$$OK with pMsg "This task is not assigned to the
+  current user.", so the status alone proves nothing: check pMsg.
+- A role with no users fails the task: OnNewTask returns EnsWfErrNoUsersFound. AutoCreateRole=1
+  on the Workflow Operation creates the role, not its users.
+- IdKeys: RoleDefinition and UserDefinition = Name; RoleMembership = "Role||User"; Worklist =
+  (Task, User), id "<taskId>||<user>". In SQL the Worklist user column is UserName, not User.
+- CompleteTask sets %UserName from %TaskStatus.AssignedTo (not from $UserName), deletes the
+  Worklist rows of the task and sends the TaskResponse with SendDeferredResponse. So a script that
+  calls the Engine from `iris session` (OS user irisowner) still records the reviewer it passed to
+  %TakeOwnershipForTask.
+- TaskStatus.TimeCreated and TimeCompleted are UTC with milliseconds (trailing zeros dropped,
+  e.g. 12:50:08.82).
+- The action buttons are disabled while the production is stopped.
+- The Priority column of the Inbox is empty for our tasks (cause not investigated).
+
+### Decisions
+- Only the final decision HOLD_FOR_REVIEW becomes a task, agent fallback included. CRITICAL already
+  has the alert file; RELEASE needs no human.
+- Two actions, Release and KeepOnHold, written as received (the Workflow cancel value too).
+- Separate .review.json in data/out/REVIEWED: the .final.json is written right away and never
+  changes; the review is one more event, later. Same file name rules as the .final.json.
+- SendRequestAsync to LabReviewer with OnResponse/OnError (key "review"): the Workflow Operation
+  defers its response (DeferResponse) until a reviewer acts. OnError only logs a warning, so a
+  Workflow problem never fails the triage.
+- No timeout or expiration in the MVP. Each open task keeps one TriageProcess instance persisted.
+- samples.sh leaves its 10 tasks open, so a judge finds them in the Workflow Inbox after the run.
+  It completes the tasks still open with Release only at the start, before cleaning data/out
+  (workflow.sh does the same).
+
+### Setup (iris.script)
+- After LoadDir and before SetAutoStart: CreateUser SuperUser and _SYSTEM, CreateRole LabReviewer,
+  AddUserToRole for both, each step guarded by %ExistsId. A failure terminates the build like
+  SetAutoStart does.
+- Creation path tested in the running container inside a rolled-back transaction (test role),
+  then for real by the clean-clone build.
+
+### Tests
+- New %UnitTest class LabTriage.Operation.TestDecisionFileOperation (7 tests): path
+  <OutputPath>/REVIEWED/<MSH-10>.review.json, fields and key order, outputType REVIEW, ISO UTC
+  timestamps, empty timestamp stays empty, unsafe MSH-10, empty MSH-10 (NO-MSH10), repeated
+  MSH-10 (timestamp suffix, first file intact).
+- The operation runs outside the production: %New(pConfigName) with a name that is not in the
+  production gives a shadow instance (Ens.Host.initConfig: no settings, no OnInit). OutputPath
+  is set by hand to a temporary folder, removed after each test.
+- %File:FileSet returns folders whatever includedirs says (it only adds folders that do not match
+  the wildcard); the test filters on Type "F".
+- Full suite: 92/92 (85 + 7).
+- tests/e2e/drain-review-tasks.sh completes every open task like the Inbox (Accept, then the
+  action) and waits for the empty Worklist and the new .review.json files. It closed the 10 tasks
+  the previous samples.sh run had left open.
+- tests/e2e/samples.sh drains before cleaning data/out (the .review.json of the drained tasks
+  arrive asynchronously, so they must land before the clean) and leaves its own 10 tasks open
+  for the Inbox. A first version also drained after the checks; removed (see Decisions).
+- tests/e2e/workflow.sh: drain, clean, then sample 06 (Release) and sample 02 (agent, KeepOnHold):
+  final file, task in the Worklist (2 rows, subject, actions), role users, Accept, action,
+  .review.json, empty Worklist. 14/14.
+- First workflow.sh run failed on my own parsing: "|" as field separator collides with the "||"
+  of the Worklist id. Switched to "^".
+- tests/e2e/clean-clone-check.sh runs workflow.sh after samples.sh: 14/14 PASS (13 + workflow.sh).
+  The clean build ran the new iris.script steps (role and users created, workflow.sh found them).
+  Production running after 70 s, healthy after 72 s. Inside the clone, samples.sh leaves its 10
+  tasks open and workflow.sh completes them at the start ("open review tasks drained").
+  The clean-clone run itself used the first version of samples.sh, which drained at the end;
+  the samples.sh then workflow.sh flow was rerun on the working repo (next item). Run against a
+  staging clone holding the uncommitted changes, since the check clones committed HEAD.
+- Rerun after removing the final drain: samples.sh 20/20, then 20 Worklist rows and 10 tasks;
+  workflow.sh 14/14, with "open review tasks drained" = 10.

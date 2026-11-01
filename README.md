@@ -85,7 +85,15 @@ drops every sample into `data/in` and checks each result (about 1 minute):
 tests/e2e/samples.sh
 ```
 
-**Unit tests** (85 `%UnitTest` tests):
+**Human review** (needs python3): completes the open review tasks, then sends samples 06 and 02 through the Workflow
+review (Release and KeepOnHold) and checks the tasks and the `.review.json` files (about 30 seconds). It also
+**deletes the files in `data/out` and `data/error`**:
+
+```bash
+tests/e2e/workflow.sh
+```
+
+**Unit tests** (92 `%UnitTest` tests):
 
 ```bash
 docker compose exec -T iris iris session IRIS -U IRISAPP <<'EOF'
@@ -109,6 +117,10 @@ flowchart LR
   TP -- "abnormal exams<br/>(sanitized)" --> AO["AgentOperation<br/>%AI.Agent"]
   AO -- "AgentResponse" --> TP
   TP -- "CRITICAL_ALERT, then FINAL" --> DFO["DecisionFileOperation"] --> OUT["data/out/"]
+  TP -- "HOLD_FOR_REVIEW:<br/>TaskRequest (async)" --> LR["LabReviewer<br/>Workflow Operation"]
+  LR <--> INBOX["Workflow Inbox<br/>(reviewer)"]
+  LR -- "TaskResponse<br/>(after the action)" --> TP
+  TP -- "ReviewResult" --> DFO
 ```
 
 For each exam (OBX), in this order:
@@ -143,7 +155,7 @@ Data folders (`data/`):
 | Folder | Content |
 |---|---|
 | `in/` | Input: drop `*.hl7` files here |
-| `out/` | `RELEASE/`, `HOLD_FOR_REVIEW/`, `CRITICAL/` (`<MSH-10>.final.json`) and `ALERTS/` (`<MSH-10>.critical.json`) |
+| `out/` | `RELEASE/`, `HOLD_FOR_REVIEW/`, `CRITICAL/` (`<MSH-10>.final.json`), `ALERTS/` (`<MSH-10>.critical.json`) and `REVIEWED/` (`<MSH-10>.review.json`) |
 | `error/` | Rejected files: a copy of the input and `<file>.error.json` |
 | `archive/` | Processed input files (timestamp suffix) |
 | `replay/` | Recorded LLM answers for REPLAY mode |
@@ -193,6 +205,55 @@ critical list. All times are UTC.
 }
 ```
 
+## Human review (Workflow)
+
+A message whose **final decision is HOLD_FOR_REVIEW** also becomes a task in the Workflow Inbox, for the
+`LabReviewer` role. This includes the agent fallback (no valid answer from the agent). CRITICAL messages don't get a
+task: the alert file is their escalation. RELEASE messages need no human.
+
+- Inbox: http://localhost:52773/csp/healthshare/irisapp/_DeepSee.UserPortal.Workflow.zen, user `SuperUser`,
+  password `SYS`. The Inbox shows the tasks of the logged-in user only. `iris.script` creates the Workflow users
+  `SuperUser` and `_SYSTEM` at build time and adds both to `LabReviewer`, so each task reaches both of them.
+- The task subject is `Lab results held for review: MSH-10 <MSH-10>, order <OBR-2>`. The message lists the exams held
+  for review, with their reasonCode and reason.
+
+To review a task:
+
+1. Open the task in the Inbox.
+2. Click **Accept**. The task is now yours (the other user can no longer act on it).
+3. Click **Release** or **KeepOnHold**.
+
+The action goes to `data/out/REVIEWED/<MSH-10>.review.json` (sample 06, Release):
+
+```json
+{
+  "messageControlId": "SYN-ORU-0006",
+  "outputType": "REVIEW",
+  "orderId": "ORD-1006",
+  "patientId": "SYN-000106",
+  "action": "Release",
+  "reviewer": "SuperUser",
+  "role": "LabReviewer",
+  "taskCreatedAt": "2026-11-01T13:11:55.082Z",
+  "taskCompletedAt": "2026-11-01T13:11:58.836Z",
+  "emittedAt": "2026-11-01T13:11:58.837Z"
+}
+```
+
+After `tests/e2e/samples.sh`, the Inbox has one task per HOLD_FOR_REVIEW sample (10 tasks), ready to review.
+The next run of `tests/e2e/samples.sh` or `tests/e2e/workflow.sh` first completes with Release the tasks still open
+(`tests/e2e/drain-review-tasks.sh`), so their `.review.json` files are written and then deleted with the rest of
+`data/out`.
+
+The file name rules are the same as for `.final.json`: safe characters only, and a timestamp suffix for a repeated MSH-10.
+
+The review never blocks or changes the triage. The `.final.json` is written right away, and the review is one more
+event later, in its own file. The `.final.json` stays as it was.
+
+The call is asynchronous: the Workflow Operation (`EnsLib.Workflow.Operation`) defers its response (DeferResponse)
+until a reviewer acts, however long that takes. The TriageProcess sends the task with `SendRequestAsync` and writes the
+`ReviewResult` in `OnResponse`. If the task cannot be created (`OnError`), the process only logs a warning.
+
 ## Known limitations
 
 - Reference ranges with a negative lower bound (e.g. `-1-5`) are not parsed (UNPARSEABLE_RANGE).
@@ -207,16 +268,22 @@ critical list. All times are UTC.
 - The IRIS instance status shows "alert" because of startup errors in the EAP build
   (`<METHOD DOES NOT EXIST>Sharding+2^STU`, "System appears to have failed over from node buildkitsandbox").
   The compose healthcheck reports the production state instead.
+- Review tasks have no timeout or expiration: a task stays open until a reviewer acts on it.
+- Each open review task keeps one TriageProcess instance persisted and waiting for the answer.
+- The Inbox action buttons are disabled while the production is stopped.
+- The Priority column of the Inbox is empty for the review tasks (cause not investigated).
 - linux/amd64 only.
 
 ## Tests
 
 | Test | What it checks |
 |---|---|
-| `%UnitTest` classes in `tests/UnitTest/` | 85 tests: CriticalLimits (31), ReferenceRange (23), AgentContract (31) |
-| `tests/e2e/samples.sh` | The 20 samples in REPLAY: folder, decision, agent, reasonCode per exam, alert, error files |
+| `%UnitTest` classes in `tests/UnitTest/` | 92 tests: CriticalLimits (31), ReferenceRange (23), AgentContract (31), DecisionFileOperation (7: review file, names, timestamps) |
+| `tests/e2e/samples.sh` | The 20 samples in REPLAY: folder, decision, agent, reasonCode per exam, alert, error files. Leaves one open review task per HOLD_FOR_REVIEW sample |
+| `tests/e2e/workflow.sh` | Workflow review of samples 06 (Release) and 02 (KeepOnHold): task in the Worklist, role users, Accept and action as SuperUser, `.review.json` |
+| `tests/e2e/drain-review-tasks.sh` | Helper: completes every open review task (default action Release), as the Inbox does |
 | `tests/e2e/agent-simulation.sh` | Sample 03 through 8 simulated agent outcomes (retry, fallback, fenced JSON) |
-| `tests/e2e/clean-clone-check.sh` | A clean clone of HEAD without `.env`: build, production running, healthy, folder permissions, `samples.sh` |
+| `tests/e2e/clean-clone-check.sh` | A clean clone of HEAD without `.env`: build, production running, healthy, folder permissions, `samples.sh`, `workflow.sh` |
 
 The e2e scripts need the `iris` service up. They change the AgentOperation `Mode` on the running production and set it
 back to empty at the end. `clean-clone-check.sh` stops this repo's stack first and does not restart it.
