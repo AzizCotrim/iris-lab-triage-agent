@@ -1,6 +1,7 @@
-/// Writes each TriageResponse as a JSON file under OutputPath:
-/// CRITICAL_ALERT goes to ALERTS/<MSH-10>.critical.json,
-/// FINAL goes to <DECISION>/<MSH-10>.final.json.
+/// Writes the outputs of the TriageProcess as JSON files under OutputPath:
+/// TriageResponse CRITICAL_ALERT goes to ALERTS/<MSH-10>.critical.json,
+/// TriageResponse FINAL goes to <DECISION>/<MSH-10>.final.json,
+/// ReviewResult (the reviewer's answer to a Workflow task) goes to REVIEWED/<MSH-10>.review.json.
 /// MSH-10 comes from the input file, so only safe characters go into the file name,
 /// and a repeated MSH-10 gets a timestamp suffix instead of replacing the earlier output.
 Class LabTriage.Operation.DecisionFileOperation Extends Ens.BusinessOperation
@@ -13,9 +14,21 @@ Class LabTriage.Operation.DecisionFileOperation Extends Ens.BusinessOperation
     /// Root folder for output files, as seen inside the container. Must end with "/": paths are built by plain concatenation.
     Property OutputPath As %String(MAXLEN = 255);
 
-    Method OnMessage(pRequest As LabTriage.Msg.TriageResponse, Output pResponse As %Library.Persistent) As %Status
+XData MessageMap
+{
+<MapItems>
+    <MapItem MessageType="LabTriage.Msg.TriageResponse">
+        <Method>WriteDecision</Method>
+    </MapItem>
+    <MapItem MessageType="LabTriage.Msg.ReviewResult">
+        <Method>WriteReview</Method>
+    </MapItem>
+</MapItems>
+}
+
+    /// CRITICAL_ALERT or FINAL output of the triage.
+    Method WriteDecision(pRequest As LabTriage.Msg.TriageResponse, Output pResponse As %Library.Persistent) As %Status
     {
-        // 1. Folder and file name
         If (pRequest.OutputType = "CRITICAL_ALERT")
         {
             Set tSubdir = "ALERTS"
@@ -26,24 +39,6 @@ Class LabTriage.Operation.DecisionFileOperation Extends Ens.BusinessOperation
             Set tExtension = ".final.json"
         }
 
-        Set tDir = ..OutputPath_tSubdir_"/"
-        If '##class(%File).DirectoryExists(tDir)
-        {
-            If '##class(%File).CreateDirectoryChain(tDir)
-            {
-                Return $$$ERROR($$$GeneralError, "Could not create folder "_tDir)
-            }
-        }
-
-        Set tBaseName = ..SafeName(pRequest.MessageControlId)
-        Set tFileName = tBaseName_tExtension
-        // Same MSH-10 received again: a UTC timestamp suffix keeps the earlier output.
-        If ##class(%File).Exists(tDir_tFileName)
-        {
-            Set tFileName = tBaseName_"_"_$TRANSLATE($ZDATETIME($ZTIMESTAMP, 8, 1, 3), " :.", "")_tExtension
-        }
-
-        // 2. JSON content
         Set tJson = {}
         Do tJson.%Set("messageControlId", pRequest.MessageControlId)
         Do tJson.%Set("outputType", pRequest.OutputType)
@@ -66,10 +61,51 @@ Class LabTriage.Operation.DecisionFileOperation Extends Ens.BusinessOperation
         }
         Do tJson.%Set("agent", tAgent)
 
-        // EmittedAt is stored in UTC as "YYYY-MM-DD hh:mm:ss.fff"; written as ISO 8601 with "T" and "Z".
-        Do tJson.%Set("emittedAt", $TRANSLATE(pRequest.EmittedAt, " ", "T")_"Z")
+        Do tJson.%Set("emittedAt", ..ToIsoUtc(pRequest.EmittedAt))
 
-        // 3. Write to a temporary file, then rename, so nobody reads a half-written file
+        Return ..WriteJsonFile(tSubdir, pRequest.MessageControlId, tExtension, tJson)
+    }
+
+    /// Reviewer's action on the Workflow task of a HOLD_FOR_REVIEW message.
+    Method WriteReview(pRequest As LabTriage.Msg.ReviewResult, Output pResponse As %Library.Persistent) As %Status
+    {
+        Set tJson = {}
+        Do tJson.%Set("messageControlId", pRequest.MessageControlId)
+        Do tJson.%Set("outputType", "REVIEW")
+        Do tJson.%Set("orderId", pRequest.OrderId)
+        Do tJson.%Set("patientId", pRequest.PatientId)
+        Do tJson.%Set("action", pRequest.Action)
+        Do tJson.%Set("reviewer", pRequest.Reviewer)
+        Do tJson.%Set("role", pRequest.Role)
+        Do tJson.%Set("taskCreatedAt", ..ToIsoUtc(pRequest.TaskCreatedAt))
+        Do tJson.%Set("taskCompletedAt", ..ToIsoUtc(pRequest.TaskCompletedAt))
+        Do tJson.%Set("emittedAt", ..ToIsoUtc(pRequest.EmittedAt))
+
+        Return ..WriteJsonFile("REVIEWED", pRequest.MessageControlId, ".review.json", tJson)
+    }
+
+    /// Writes pJson to OutputPath/pSubdir/<safe MSH-10><pExtension>, creating the folder when needed.
+    Method WriteJsonFile(pSubdir As %String, pMessageControlId As %String, pExtension As %String, pJson As %DynamicObject) As %Status
+    {
+        // 1. Folder and file name
+        Set tDir = ..OutputPath_pSubdir_"/"
+        If '##class(%File).DirectoryExists(tDir)
+        {
+            If '##class(%File).CreateDirectoryChain(tDir)
+            {
+                Return $$$ERROR($$$GeneralError, "Could not create folder "_tDir)
+            }
+        }
+
+        Set tBaseName = ..SafeName(pMessageControlId)
+        Set tFileName = tBaseName_pExtension
+        // Same MSH-10 received again: a UTC timestamp suffix keeps the earlier output.
+        If ##class(%File).Exists(tDir_tFileName)
+        {
+            Set tFileName = tBaseName_"_"_$TRANSLATE($ZDATETIME($ZTIMESTAMP, 8, 1, 3), " :.", "")_pExtension
+        }
+
+        // 2. Write to a temporary file, then rename, so nobody reads a half-written file
         Set tTmpFileName = tDir_tFileName_".tmp"
         Set tStream = ##class(%Stream.FileCharacter).%New()
         Set tStream.TranslateTable = "UTF8"
@@ -78,7 +114,7 @@ Class LabTriage.Operation.DecisionFileOperation Extends Ens.BusinessOperation
         {
             Return tSC
         }
-        Do tStream.Write(tJson.%ToJSON())
+        Do tStream.Write(pJson.%ToJSON())
         Set tSC = tStream.%Save()
         If $$$ISERR(tSC)
         {
@@ -92,8 +128,15 @@ Class LabTriage.Operation.DecisionFileOperation Extends Ens.BusinessOperation
             Return $$$ERROR($$$GeneralError, "Could not rename "_tTmpFileName_" to "_tDir_tFileName)
         }
 
-        $$$LOGINFO("Wrote "_tSubdir_"/"_tFileName)
+        $$$LOGINFO("Wrote "_pSubdir_"/"_tFileName)
         Return $$$OK
+    }
+
+    /// UTC timestamp stored as "YYYY-MM-DD hh:mm:ss.fff", written as ISO 8601 with "T" and "Z".
+    /// An empty value stays empty.
+    ClassMethod ToIsoUtc(pTimeStamp As %String) As %String
+    {
+        Return $SELECT(pTimeStamp = "": "", 1: $TRANSLATE(pTimeStamp, " ", "T")_"Z")
     }
 
     /// MSH-10 as a file name: only letters A-Z/a-z, digits, ".", "_" and "-", no leading dots,

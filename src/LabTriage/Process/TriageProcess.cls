@@ -3,6 +3,8 @@
 /// any agent failure or invalid answer sends those exams to review (FALLBACK, AGENT_FALLBACK).
 /// An exception during triage sends every exam still without a destination to review
 /// (FALLBACK, PROCESSING_ERROR); the final output is always emitted.
+/// HOLD_FOR_REVIEW messages also become a Workflow task for the LabReviewer role; the
+/// reviewer's action comes back in OnResponse and is written as a ReviewResult.
 Class LabTriage.Process.TriageProcess Extends Ens.BusinessProcess
 {
 
@@ -150,7 +152,112 @@ Class LabTriage.Process.TriageProcess Extends Ens.BusinessProcess
         // Set after the alert, so the final output is always later than the alert.
         Set tTriageResponse.EmittedAt = $ZDATETIME($ZTIMESTAMP, 3, 1, 3)
 
-        Return ..SendRequestAsync("DecisionFileOperation", tTriageResponse, 0) // 0 = no response expected.
+        Set tSC = ..SendRequestAsync("DecisionFileOperation", tTriageResponse, 0) // 0 = no response expected.
+        If $$$ISERR(tSC)
+        {
+            Return tSC
+        }
+
+        // Held messages also become a Workflow task. The final output is already on its way,
+        // so a failure here is only logged: the review never blocks or changes the triage.
+        If (tTriageResponse.Decision = "HOLD_FOR_REVIEW")
+        {
+            Set tSC = ..SendReviewTask(pRequest, tTriageResponse)
+            If $$$ISERR(tSC)
+            {
+                $$$LOGSTATUS(tSC)
+            }
+        }
+
+        Return $$$OK
+    }
+
+    /// Sends a Workflow task for a HOLD_FOR_REVIEW message to the LabReviewer role.
+    /// The Workflow Operation defers its answer until a reviewer acts in the Workflow Inbox,
+    /// so the call is asynchronous and the answer arrives later in OnResponse ("review" key).
+    Method SendReviewTask(pRequest As LabTriage.Msg.TriageRequest, pTriageResponse As LabTriage.Msg.TriageResponse) As %Status
+    {
+        Set tTask = ##class(EnsLib.Workflow.TaskRequest).%New()
+        // Button names are also the values returned in %Action.
+        Set tTask.%Actions = "Release,KeepOnHold"
+        Set tTask.%Subject = $EXTRACT("Lab results held for review: MSH-10 "_pRequest.MessageControlId_", order "_pRequest.OrderId, 1, 255)
+        Set tTask.%Message = ..ReviewTaskMessage(pRequest, pTriageResponse)
+        Return ..SendRequestAsync("LabReviewer", tTask, 1, "review") // 1 = response expected.
+    }
+
+    /// Text shown to the reviewer: patient, order and one line per exam held for review.
+    /// Limited to 2000 characters (TaskRequest.%Message MAXLEN).
+    ClassMethod ReviewTaskMessage(pRequest As LabTriage.Msg.TriageRequest, pTriageResponse As LabTriage.Msg.TriageResponse) As %String
+    {
+        Set tNewLine = $CHAR(13, 10)
+        Set tText = "Patient "_pRequest.PatientId_", order "_pRequest.OrderId_", MSH-10 "_pRequest.MessageControlId_"."_tNewLine
+        Set tText = tText_"Exams held for review ("_pTriageResponse.Review.Count()_"); released: "_pTriageResponse.Released.Count()_"."
+
+        For tIndex = 1:1:pTriageResponse.Review.Count()
+        {
+            Set tDecision = pTriageResponse.Review.GetAt(tIndex)
+            Set tText = tText_tNewLine_"- "_tDecision.LoincCode_" "_tDecision.ExamName_": "_tDecision.ReasonCode_" ("_tDecision.DecidedBy_"). "_tDecision.Reason
+        }
+
+        If ($LENGTH(tText) > 2000)
+        {
+            Set tText = $EXTRACT(tText, 1, 1997)_"..."
+        }
+        Return tText
+    }
+
+    /// Answer of an asynchronous call. Only the Workflow task ("review") expects one:
+    /// the reviewer's action becomes a ReviewResult for the DecisionFileOperation.
+    /// The MSH-10 comes from request, the original TriageRequest of this process instance.
+    Method OnResponse(request As LabTriage.Msg.TriageRequest, ByRef response As %Library.Persistent, callrequest As %Library.Persistent, callresponse As %Library.Persistent, pCompletionKey As %String) As %Status
+    {
+        If (pCompletionKey '= "review")
+        {
+            Return $$$OK
+        }
+
+        Try
+        {
+            If (('$ISOBJECT(callresponse)) || ('callresponse.%IsA("EnsLib.Workflow.TaskResponse")))
+            {
+                $$$LOGWARNING("Review task for MSH-10="_request.MessageControlId_" returned no TaskResponse.")
+                Return $$$OK
+            }
+
+            #dim tTask As EnsLib.Workflow.TaskResponse = callresponse
+
+            Set tReview = ##class(LabTriage.Msg.ReviewResult).%New()
+            Set tReview.MessageControlId = request.MessageControlId
+            Set tReview.OrderId = request.OrderId
+            Set tReview.PatientId = request.PatientId
+            // Written as received: Release, KeepOnHold or the Workflow cancel value.
+            Set tReview.Action = tTask.%Action
+            Set tReview.Reviewer = tTask.%UserName
+            Set tReview.Role = tTask.%RoleName
+            Set tReview.TaskCreatedAt = tTask.%TaskStatus.TimeCreated
+            Set tReview.TaskCompletedAt = tTask.%TaskStatus.TimeCompleted
+            Set tReview.EmittedAt = $ZDATETIME($ZTIMESTAMP, 3, 1, 3)
+
+            $$$ThrowOnError(..SendRequestAsync("DecisionFileOperation", tReview, 0)) // 0 = no response expected.
+        } Catch tEx
+        {
+            $$$LOGERROR("Review result failed for MSH-10="_request.MessageControlId_": "_$ZSTRIP(tEx.DisplayString(), "<>W"))
+        }
+
+        // The triage output is already written: a review problem never fails this process.
+        Return $$$OK
+    }
+
+    /// Error answer of an asynchronous call. For the Workflow task (for example, a role without
+    /// users) it is logged and the process ends normally, since the final output is already written.
+    Method OnError(request As LabTriage.Msg.TriageRequest, ByRef response As %Library.Persistent, callrequest As %Library.Persistent, pErrorStatus As %Status, pCompletionKey As %String) As %Status
+    {
+        If (pCompletionKey = "review")
+        {
+            $$$LOGWARNING("Review task failed for MSH-10="_request.MessageControlId_": "_$SYSTEM.Status.GetErrorText(pErrorStatus))
+            Return $$$OK
+        }
+        Return pErrorStatus
     }
 
     /// Sends the CRITICAL_ALERT with a copy of the critical list. Returns the send status.

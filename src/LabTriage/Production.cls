@@ -29,6 +29,9 @@ XData ProductionDefinition
     <Setting Target="Host" Name="Mode"></Setting>
     <Setting Target="Host" Name="SimulatedOutcome">HOLD_ALL</Setting>
   </Item>
+  <Item Name="LabReviewer" Category="" ClassName="EnsLib.Workflow.Operation" PoolSize="1" Enabled="true" Foreground="false" Comment="Workflow role: HOLD_FOR_REVIEW messages become tasks in the Workflow Inbox." LogTraceEvents="false" Schedule="">
+    <Setting Target="Host" Name="AutoCreateRole">1</Setting>
+  </Item>
 </Production>
 }
 
