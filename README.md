@@ -309,6 +309,15 @@ back to empty at the end. `clean-clone-check.sh` stops this repo's stack first a
 └── tests/                         UnitTest/ and e2e/
 ```
 
+## AI Hub bugs reported
+
+- [#9](https://github.com/intersystems-community/ai-hub-eap-bugreports/issues/9): the OpenAI-compatible
+  providers (`openai`, `gemini`) drop `finish_reason`, so a reply cut at the token limit looks like a complete answer.
+- [#10](https://github.com/intersystems-community/ai-hub-eap-bugreports/issues/10): provider errors that AI Hub
+  recognises (model not found, billing, timeout) are thrown as `<%AICore>ProviderError` instead of their dedicated codes.
+
+Both were found while building LabTriage Agent.
+
 ## License
 
 MIT, see [LICENSE](LICENSE).

@@ -443,3 +443,25 @@
   staging clone holding the uncommitted changes, since the check clones committed HEAD.
 - Rerun after removing the final drain: samples.sh 20/20, then 20 Worklist rows and 10 tasks;
   workflow.sh 14/14, with "open review tasks drained" = 10.
+
+### AI Hub bug reports
+- For the contest's "Find a bug in AI Hub" bonus. Done outside this repo (~/aihub-bugrepro); nothing in src/ changed.
+- The two original candidates were dropped as duplicates: the `Sharding+2^STU` startup error (already #1) and
+  timeout_ms not stopping the in-flight HTTP call (already #6).
+- Method: a fake OpenAI/Anthropic-style server (Python, inside the container) instead of a real provider; a new
+  throwaway container per run, no published ports; each repro run twice from scratch, same result both times. APIs and
+  error codes checked in %Dictionary and %AI.Errors.inc, not in the docs. Two real Gemini calls only
+  (gemini-3.5-flash-lite, output limit 1 token), key passed as an environment variable.
+- The gemini provider rejects base_url (accepts only api_key, http_config, extra_config), so probing it took a hosts
+  entry and a test CA in http_config.tls.ca_certificates. The reports use the openai provider with base_url.
+- Posted: #9, the OpenAI-compatible providers drop finish_reason (a reply cut at the token limit comes back as a normal
+  answer; with real Gemini and max_tokens 1, an empty success); #10, recognised provider errors (model not found,
+  billing, timeout) are thrown as <%AICore>ProviderError instead of ModelNotFound, BillingError and Timeout, and a 503
+  with a Google-style body is labelled "Rate limit exceeded".
+- Effect on this project: a cut answer from Gemini reaches AgentOperation as OK; an empty one becomes EMPTY and a cut
+  JSON fails AgentContract, so both still end in retry or fallback. ClassifyError matching on the error text is still
+  needed because of #10.
+- For later (optional, outside the MVP): http_config, accepted by every provider but not listed by %GetProviders(), has
+  an undocumented request_timeout_secs (per-request HTTP timeout) that could bound the in-flight call instead of relying
+  on the SendRequestSync timeout. Only its type was checked (u64), not its effect. Without it, a provider that never
+  answered failed after about 60 s per attempt, 4 attempts (243.5 s).
