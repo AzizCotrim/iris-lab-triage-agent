@@ -21,6 +21,17 @@ Class LabTriage.Msg.AgentResponse Extends Ens.Response
     /// Model id used.
     Property Model As %String(MAXLEN = 100);
 
+    /// TriageAgent PROMPTVERSION that produced the answer. REAL: the compiled prompt;
+    /// REPLAY: the version stored in the recording; SIMULATION: empty (no prompt is used).
+    Property PromptVersion As %String(MAXLEN = 50);
+
+    /// Prompt (input) tokens of this call, from the SDK session stats. REPLAY: from the
+    /// recording (empty for recordings made before tokens were recorded); SIMULATION: empty.
+    Property InputTokens As %Integer;
+
+    /// Completion (output) tokens of this call, from the SDK session stats. Same sources as InputTokens.
+    Property OutputTokens As %Integer;
+
 Storage Default
 {
 <Data name="AgentResponseDefaultData">
@@ -42,6 +53,15 @@ Storage Default
 </Value>
 <Value name="6">
 <Value>Model</Value>
+</Value>
+<Value name="7">
+<Value>PromptVersion</Value>
+</Value>
+<Value name="8">
+<Value>InputTokens</Value>
+</Value>
+<Value name="9">
+<Value>OutputTokens</Value>
 </Value>
 </Data>
 <DefaultData>AgentResponseDefaultData</DefaultData>

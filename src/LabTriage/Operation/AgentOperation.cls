@@ -76,7 +76,7 @@ Class LabTriage.Operation.AgentOperation Extends Ens.BusinessOperation
             Set pResponse.LatencyMs = ($ZHOROLOG - tStart) * 1000 \ 1
         }
 
-        $$$LOGINFO("Agent call attempt "_pRequest.Attempt_" ("_tMode_"): status="_pResponse.Status_" model="_pResponse.Model_" latencyMs="_pResponse.LatencyMs)
+        $$$LOGINFO("Agent call attempt "_pRequest.Attempt_" ("_tMode_"): status="_pResponse.Status_" model="_pResponse.Model_" prompt="_pResponse.PromptVersion_" tokens="_pResponse.InputTokens_"/"_pResponse.OutputTokens_" latencyMs="_pResponse.LatencyMs)
         Return $$$OK
     }
 
@@ -110,6 +110,7 @@ Class LabTriage.Operation.AgentOperation Extends Ens.BusinessOperation
     Method CallAgent(pInput As %String, pResponse As LabTriage.Msg.AgentResponse)
     {
         Set pResponse.Provider = "gemini"
+        Set pResponse.PromptVersion = ##class(LabTriage.Agent.TriageAgent).#PROMPTVERSION
         Try
         {
             Set tAgent = ##class(LabTriage.Agent.TriageAgent).%New()
@@ -134,7 +135,11 @@ Class LabTriage.Operation.AgentOperation Extends Ens.BusinessOperation
                     Set pResponse.Status = "OK"
                     Set pResponse.RawText = tContent
                 }
-                Set pResponse.LatencyMs = tSession.GetStats().%Get("total_llm_duration_ms")
+                // One session per call, so the session totals are the totals of this call.
+                Set tStats = tSession.GetStats()
+                Set pResponse.LatencyMs = tStats.%Get("total_llm_duration_ms")
+                Set pResponse.InputTokens = tStats.%Get("total_prompt_tokens")
+                Set pResponse.OutputTokens = tStats.%Get("total_completion_tokens")
             }
         } Catch tEx
         {
@@ -191,7 +196,8 @@ Class LabTriage.Operation.AgentOperation Extends Ens.BusinessOperation
         }
     }
 
-    /// REPLAY mode: returns the answer recorded for this exact input.
+    /// REPLAY mode: returns the answer recorded for this exact input, with the prompt version,
+    /// token counts and LLM latency of the recorded call when the recording has them.
     /// No recording: NO_KEY, so the Process falls back at once, and the Event Log says why.
     Method Replay(pInput As %String, pResponse As LabTriage.Msg.AgentResponse)
     {
@@ -216,6 +222,15 @@ Class LabTriage.Operation.AgentOperation Extends Ens.BusinessOperation
             Set pResponse.Status = "OK"
             Set pResponse.RawText = tRecord.rawText
             Set pResponse.Model = tRecord.model
+            Set pResponse.PromptVersion = tRecord.promptVersion
+            // Recordings made before tokens were recorded have no token keys: %Get returns "".
+            Set pResponse.InputTokens = tRecord.%Get("inputTokens")
+            Set pResponse.OutputTokens = tRecord.%Get("outputTokens")
+            // LLM time of the recorded REAL call. Older recordings have none: LatencyMs stays 0.
+            If (tRecord.%IsDefined("latencyMs"))
+            {
+                Set pResponse.LatencyMs = tRecord.latencyMs
+            }
         } Catch tEx
         {
             Set pResponse.Status = "PROVIDER_ERROR"
@@ -236,6 +251,19 @@ Class LabTriage.Operation.AgentOperation Extends Ens.BusinessOperation
         Set tRecord = {}
         Do tRecord.%Set("promptVersion", ##class(LabTriage.Agent.TriageAgent).#PROMPTVERSION)
         Do tRecord.%Set("model", pResponse.Model)
+        // Only when the SDK reported them, so a missing count stays missing instead of 0.
+        If (pResponse.InputTokens '= "")
+        {
+            Do tRecord.%Set("inputTokens", pResponse.InputTokens, "number")
+        }
+        If (pResponse.OutputTokens '= "")
+        {
+            Do tRecord.%Set("outputTokens", pResponse.OutputTokens, "number")
+        }
+        If (pResponse.LatencyMs '= "")
+        {
+            Do tRecord.%Set("latencyMs", pResponse.LatencyMs, "number")
+        }
         Do tRecord.%Set("recordedAt", $TRANSLATE($ZDATETIME($ZTIMESTAMP, 3, 1, 3), " ", "T")_"Z")
         Do tRecord.%Set("input", pInput)
         Do tRecord.%Set("rawText", pResponse.RawText)
