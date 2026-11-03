@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Prints one line per final output in data/out: message number, decision,
 agent provider/attempts and the reasonCode of every exam."""
 import glob

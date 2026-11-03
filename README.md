@@ -55,6 +55,8 @@ Langfuse is the better choice for teams that need evaluation pipelines, cost das
 - Docker and Docker Compose v2.24+ (`env_file` with `required: false`)
 - x86_64 host: the image is linux/amd64 only (Apple Silicon runs it emulated)
 - Access to the InterSystems AI Hub Early Access Program (EAP)
+- bash and python3 for the scripts in `tests/e2e/` (jq optional)
+- Ports 52773 and 1972 free
 
 ## Base image
 
@@ -84,7 +86,7 @@ cd iris-lab-triage-agent
 docker compose up -d --build
 ```
 
-- The first build takes about 4 minutes.
+- The first build takes 4 to 6 minutes, depending on the machine; the container is healthy 1 to 2 minutes after it starts.
 - The production `LabTriage.Production` starts on its own when the container starts (1 to 2 minutes in REPLAY mode).
 - `docker compose ps` shows `iris` as `healthy` once the production is running.
 - You don't need a `.env` file: the default mode is REPLAY (recorded LLM answers, no API key).
@@ -155,6 +157,15 @@ EOF
 (local dev credentials).
 Production page: http://localhost:52773/csp/healthshare/irisapp/EnsPortal.ProductionConfig.zen?PRODUCTION=LabTriage.Production
 
+## Clean up
+
+```bash
+docker compose run --rm init-perms chmod -R a+rwX /data
+docker compose down -v
+```
+
+IRIS writes the files in `data/` as uid 51773; the first command makes them deletable by your user (no sudo).
+
 ## Reproducible example: LLM traceability in Visual Trace
 
 Every LLM call of the production is an Interoperability message: the TriageProcess sends an
@@ -218,8 +229,9 @@ For each exam (OBX), in this order:
    abnormal goes to the agent.
 4. **Agent**: one call per message for all its abnormal exams. The payload has only code, name, value, unit,
    range, flag and status: no patient identity, order or free text (`LabTriage.Util.Sanitizer`).
-   `LabTriage.Util.AgentContract` validates the answer. A bad answer, timeout or provider error gets one retry.
-   If there is still no valid answer, the exams go to review (fallback).
+   `LabTriage.Util.AgentContract` validates the answer. A bad answer, timeout or provider error gets one retry;
+   a rate limit or a missing or invalid key does not. If there is still no valid answer, the exams go to review
+   (fallback).
 
 The message decision is the most severe one: **CRITICAL** > **HOLD_FOR_REVIEW** > **RELEASE**.
 
@@ -245,7 +257,7 @@ Data folders (`data/`):
 | `error/` | Rejected files: a copy of the input and `<file>.error.json` |
 | `archive/` | Processed input files (timestamp suffix) |
 | `replay/` | Recorded LLM answers for REPLAY mode |
-| `samples/` | 20 synthetic ORU^R01 test messages |
+| `samples/` | 20 synthetic ORU^R01 test messages (numbered 01 to 21, no 12) |
 | `trace-example/` | The 3 synthetic messages of the Visual Trace example (`tests/e2e/trace-example.sh`) |
 
 ## Output
@@ -369,6 +381,7 @@ until a reviewer acts, however long that takes. The TriageProcess sends the task
 | `tests/e2e/samples.sh` | The 20 samples in REPLAY: folder, decision, agent, reasonCode per exam, alert, error files. Leaves one open review task per HOLD_FOR_REVIEW sample |
 | `tests/e2e/workflow.sh` | Workflow review of samples 06 (Release) and 02 (KeepOnHold): task in the Worklist, role users, Accept and action as SuperUser, `.review.json` |
 | `tests/e2e/drain-review-tasks.sh` | Helper: completes every open review task (default action Release), as the Inbox does |
+| `tests/e2e/summary.py` | Helper: lists the outputs in `data/out` |
 | `tests/e2e/agent-simulation.sh` | Sample 03 through 8 simulated agent outcomes (retry, fallback, fenced JSON) |
 | `tests/e2e/trace-example.sh` | The 3 messages of `data/trace-example/` in REPLAY: rule-only CRITICAL, agent call from a recording (prompt version, tokens, latency), agent call with no recording (NO_KEY, fallback); prints SessionId and Visual Trace link. Does not clean `data/out`. Leaves two open review tasks |
 | `tests/e2e/clean-clone-check.sh` | A clean clone of HEAD without `.env`: build, production running, healthy, folder permissions, `samples.sh`, `workflow.sh` |
