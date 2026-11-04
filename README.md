@@ -436,6 +436,11 @@ until a reviewer acts, however long that takes. The TriageProcess sends the task
 - The Inbox action buttons are disabled while the production is stopped.
 - The Priority column of the Inbox is empty for the review tasks (cause not investigated).
 - linux/amd64 only.
+- The prompt asks for a reason of at most 300 characters; AgentContract accepts up to 500, the size of
+  ExamDecision.Reason, so a longer reason than the prompt asks for is not rejected.
+- In REPLAY, an input with no recording returns agent status NO_KEY so the Process falls back without a second attempt;
+  the reason in the .final.json is "Sent to review because agent status NO_KEY (No recorded answer for this input)."
+  It means "no recording", not a missing key.
 
 ## Tests
 
