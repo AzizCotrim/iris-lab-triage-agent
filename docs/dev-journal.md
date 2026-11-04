@@ -465,3 +465,116 @@
   an undocumented request_timeout_secs (per-request HTTP timeout) that could bound the in-flight call instead of relying
   on the SendRequestSync timeout. Only its type was checked (u64), not its effect. Without it, a provider that never
   answered failed after about 60 s per attempt, 4 attempts (243.5 s).
+
+## 2026-11-04 — IPM module (ZPM bonus)
+
+### What changed
+- New `LabTriage.Installer`, `Setup(pRoot)`: what iris.script did after LoadDir (Lookup Table import from
+  `pRoot_"config/FlagCategory.xml"`, CreateUser SuperUser and _SYSTEM, CreateRole LabReviewer, AddUserToRole,
+  SetAutoStart), each step guarded so a second run changes nothing. It also creates
+  `/home/irisowner/dev/data/{in,out,error,archive,replay}` when missing and, when pRoot is not `/home/irisowner/dev/`,
+  copies `data/replay/*.json` and `data/samples/*.hl7` from pRoot without overwriting.
+- Second argument `pStartProduction` (default 0). With 1, after SetAutoStart, Setup starts LabTriage.Production
+  only if no production is running, suspended or troubled in the namespace; if another one is, nothing is stopped
+  and Setup writes which one is running and how to start ours. Inside a transaction (`$TLEVEL > 0`) the start is
+  done by a job (`StartAfterCommit`) that waits for the end of the transaction (see below) and logs the outcome to
+  messages.log.
+- iris.script: LoadDir, then `Setup("/home/irisowner/dev/")`, Terminate if it fails. No setup logic left inline.
+  It does not pass pStartProduction: AutoStart starts the production when the container starts.
+- `module.xml`: `iris-lab-triage-agent` 1.0.1, `SystemRequirements Version=">=2026.3" Interoperability="enabled"`,
+  `LabTriage.PKG`, file resources `/config/FlagCategory.xml`, `/data/replay/`, `/data/samples/` (needed by Setup in a
+  registry install), one `<UnitTest Class=...>` per test class, `Invoke LabTriage.Installer.Setup` with `${root}`
+  and `1`, `Phase="Activate" When="After"`.
+- README: section "Install with IPM" (IPM client and registry commands copied from the IPM README,
+  github.com/intersystems/ipm, README.md at commit 5a71f3c), Project structure.
+
+### IPM vs build 154 (checked in the image and in the IPM 0.10.10 sources)
+- No IPM client in the image: no `%IPM.Main` in IRISAPP or %SYS, no `zpm` command, and no
+  `dist/install/misc/zpm.xml` (the folder has only buildver, hsutil.xml, iboot, iutil.*, update.*).
+- `%IPM` classes exist only in HSLIB (module `ZPM` 0.10.5-SNAPSHOT, used by HealthShare for its own modules), not
+  mapped to other namespaces. Not used: it is not the client a user installs.
+- The current client is the registry installer (`/packages/zpm/latest/installer`, `IPM.Installer`, VERSION 0.10.10).
+  Its sources were first read from the installer XML; later it was installed in a throwaway container only.
+- IPM 0.9+ installs in the current namespace only; the README installs it in the app's namespace, as the IPM README
+  says.
+- The IPM README gives two ways to get the community registry: `zpm "enable -community"` (also maps IPM to every
+  namespace) and `repo -r -n registry -url https://pm.community.intersystems.com/ -user "" -pass ""` (registry only).
+  The README uses the second: `enable -map -globally -preview` showed IPM mappings would be added to HSCUSTOM, HSSYS
+  and HSSYSLOCALTEMP, which use HealthShare's own IPM.
+- `repo -r ... -pass ""` prints "WARNING: Using -password via the CLI is insecure" (IPM's own warning; the password is
+  empty).
+- `<UnitTest Package="LabTriage">` does not fit this repo: the Test processor's unique name is `<Package>.PKG`, so it
+  would be `LabTriage.PKG`, the same as the app resource (`%IPM.Storage.ResourceReference` has
+  `Index ResourceName On UniqueName [ Unique ]`). Also, the test phase does not delete test classes when the package
+  already has classes, and a `.PKG` resource takes every class of the package found in the namespace.
+  `<UnitTest Class="...">` gives each test class its own unique name (`<Class>.CLS`), and the `.PKG` resource skips
+  classes owned by another resource, so the tests stay out of `LabTriage.PKG` without renaming the package. A new
+  test class needs its own line in module.xml.
+- `Invoke` defaults to `Phase="Configure"`. Configure is not in the phase list of load/install, but the load log
+  prints "Configure START/SUCCESS" inside Activate, so the default may also run there; `Phase="Activate" When="After"`
+  was kept because it is explicit.
+- `load` and `install` (not in developer mode) run Reload, Compile and Activate in one transaction
+  (`%IPM.Utils.Module`, TSTART before the phases, TCOMMIT after Activate, TROLLBACK on error). Compiling
+  LabTriage.Production saves its configuration, and the transaction keeps the X lock on `^Ens.Config.ItemD(1)` until
+  the commit (seen in `^$LOCK`, owner = the installing WorkQueue worker). A StartProduction called from the Invoke then
+  failed after 30 s with `<Ens>ErrCanNotAcquireRuntimeLock` (twice, same result), and IPM rolled the whole install
+  back (classes, module, Lookup Table, AutoStart; the folders created on disk stayed). A StartProduction inside a
+  plain TSTART, with the classes compiled outside it, worked, so the transaction alone is not the cause. Hence the
+  job that waits for the commit: Setup locks `^LabTriage.Installer("Start")`, jobs `StartAfterCommit`, and unlocks;
+  inside a transaction the unlock only takes effect at TCOMMIT/TROLLBACK, so the job gets the lock right after the
+  install ends. After a rollback AutoStart is no longer ours and the job does nothing.
+- `zpm "iris-lab-triage-agent package"` exports the classes under `src/cls/LabTriage/...` (Package processor
+  directory `cls`), not the repo layout `src/LabTriage/...`.
+- Right after `docker run`, `iris qlist` says running while `iris session` still answers
+  "Sign-on inhibited: Startup or Installation in progress" (about 20 to 70 s here).
+- `${root}` comes from `NormalizeDirectory(Root)`, with a final "/". Setup normalizes it anyway.
+- `SystemRequirements Version` is compared with major.minor only (`2026.3` on build 154).
+- In the base image, `USER` already has Interoperability and passes `validateNamespace` (what IPM checks); HSCUSTOM,
+  HSLIB and HSSYS have it but fail `validateNamespace`.
+- `SetAutoStart(pProductionName, pStartupPriority)`: the second argument is a priority, not a disable flag.
+- `SYS.Process.Terminate` is an instance method on this build (`<METHOD DOES NOT EXIST>` as a class method).
+
+### Verified (without the IPM client)
+- Project container: it was still running classes from the 11-01 image (no `AgentResponse.PromptVersion`), so 4
+  TestAgentOperation tests failed with `<PROPERTY DOES NOT EXIST>`. After LoadDir of src: 96/96. Setup run twice:
+  OK, 7 Lookup Table entries, role with both users, AutoStart set, production state 1. samples.sh 20/20,
+  workflow.sh 14/14.
+- Throwaway container from the base image (no compose, no ports), tree copied to `/home/irisowner/labtriage-src`,
+  namespace USER: LoadDir, then Setup twice: OK. `/home/irisowner/dev/data/*` created, 4 recordings and 20 samples
+  copied; a changed sample was kept and a removed recording was copied again. After a container restart the
+  production was running in 12 s (AutoStart). Sample 13 in REPLAY with no key: `out/CRITICAL/SYN-ORU-0013.final.json`
+  (agent status OK, provider replay) and `out/ALERTS/SYN-ORU-0013.critical.json`. Unit tests there: 96/96.
+- clean-clone-check.sh against a staging clone holding all the uncommitted changes, final versions (the check clones
+  committed HEAD): 14/14 PASS. The build compiled the final LabTriage.Installer and ran iris.script with Setup;
+  production running after 58 s, healthy after 61 s; samples.sh 20/20, workflow.sh 14/14 (role and users created
+  by Setup). An earlier run, before pStartProduction, was also 14/14.
+
+### Verified with IPM 0.10.10 (throwaway container, USER)
+- Fresh container from the base image, no compose, no published ports, no `/home/irisowner/dev`. Tree copied without
+  .git, the secrets file and data/{in,out,error,archive}. The project container has no IPM.
+- README steps 1 and 2 run as written, in USER (the two lines of step 2 piped as typed, plus `quit` to leave the
+  shell): install snippet HTTP 200, "Installation succeeded"; `repo -list` before: "No repositories found" (banner:
+  "No registry configured"); after: `registry`, https://pm.community.intersystems.com/, Enabled Yes, Available Yes.
+- `zpm "version"` in USER: `zpm 0.10.10` (installed in USER), registry `https://pm.community.intersystems.com/ - 1.0.0`.
+  `zpm "search iris-lab-triage-agent"`: empty (not published yet).
+- `zpm "load /home/irisowner/labtriage-src -v"`: every phase SUCCESS, no ERROR; "LabTriage.Production starts when the
+  install transaction commits (job 1191)". Production state 1 two seconds after the load, no restart; messages.log:
+  "LabTriage.Installer: start of LabTriage.Production: OK".
+- `zpm "list"`: `iris-lab-triage-agent 1.0.1`.
+- `zpm "iris-lab-triage-agent test"`: Methods 4 + 7 + 31 + 31 + 23 = 96 passed, 0 failed (one run per UnitTest
+  class); production still running afterwards (Setup did nothing, ours was already running).
+- `zpm "iris-lab-triage-agent package -v -path /tmp/labtriage-pkg"`, with the 5 test classes compiled in USER at that
+  moment: the .tgz has module.xml, README.md, LICENSE, config/FlagCategory.xml, data/replay (4 + .gitkeep),
+  data/samples (20) and the 22 app classes; no entry contains "test".
+- Sample 13 in REPLAY, no key in the environment: `out/CRITICAL/SYN-ORU-0013.final.json` (agent OK, provider replay)
+  and `out/ALERTS/SYN-ORU-0013.critical.json` (CRITICAL_ALERT).
+- History: an earlier run had IPM installed in %SYS and mapped with `zpm "enable -map -namespaces USER"`; same results
+  for load, list, test, package and sample 13. The check with another production running was done in that run: with
+  a throwaway empty `ZCheck.OtherProduction` running, `Setup(root, 1)` wrote the warning, with and without a
+  transaction; ZCheck.OtherProduction kept running and ours was not started.
+- Project container, after the change (no zpm): Installer recompiled, `Setup(…, 1)` inside TSTART with our production
+  running: OK, nothing started. samples.sh 20/20, workflow.sh 14/14.
+
+### Not verified yet
+- `zpm "install iris-lab-triage-agent"` from the registry: the module is not published on Open Exchange yet
+  (the registry is configured and answers; the search finds nothing).

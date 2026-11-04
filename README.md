@@ -157,6 +157,64 @@ EOF
 (local dev credentials).
 Production page: http://localhost:52773/csp/healthshare/irisapp/EnsPortal.ProductionConfig.zen?PRODUCTION=LabTriage.Production
 
+## Install with IPM
+
+The app is also an IPM module (`module.xml`, `iris-lab-triage-agent` 1.0.1).
+
+> **Only on the AI Hub EAP image `2026.3.0AI.154.0` (build 154).** The classes use `%AI` (AI Hub SDK), which no other
+> IRIS build has, so they do not compile anywhere else. The module requires IRIS `>=2026.3` and a namespace with
+> Interoperability enabled.
+
+**Namespace:** any namespace with Interoperability enabled. In the base image, `USER` already has it (no extra step).
+In this repo's container, use `IRISAPP`. Run the steps below in that namespace.
+
+The build 154 image does not ship the IPM client (no `dist/install/misc/zpm.xml`; the `%IPM` classes in `HSLIB` are
+HealthShare's own, not a `zpm` command).
+
+**1. Install the IPM client** in the current namespace, with a user that has the `%ALL` role:
+
+```
+s version="latest" s r=##class(%Net.HttpRequest).%New(),r.Server="pm.community.intersystems.com",r.SSLConfiguration="ISC.FeatureTracker.SSL.Config" d r.Get("/packages/zpm/"_version_"/installer"),$system.OBJ.LoadStream(r.HttpResponse.Data,"c")
+```
+
+**2. Enable the community registry** (IPM 0.9+ has none by default; `zpm "install"` needs it):
+
+```
+zpm
+repo -r -n registry -url https://pm.community.intersystems.com/ -user "" -pass ""
+```
+
+The first line opens the IPM shell; `quit` leaves it.
+
+**3. Install the app.** From the community registry, once the module is published on Open Exchange:
+
+```
+USER>zpm "install iris-lab-triage-agent"
+```
+
+Or from a clone (works now):
+
+```
+USER>zpm "load /path/to/iris-lab-triage-agent -v"
+USER>zpm "iris-lab-triage-agent test"
+```
+
+After compiling, the module calls `LabTriage.Installer.Setup` with the module root. Setup does the same as
+`iris.script` in the Docker build: loads the Lookup Table `LabTriage.FlagCategory` from `config/FlagCategory.xml`,
+creates the Workflow role `LabReviewer` with the users `SuperUser` and `_SYSTEM`, and sets `LabTriage.Production` to
+start with IRIS. Running it again changes nothing.
+
+**Production:** it also starts right away, a few seconds after the install finishes (IPM installs inside a transaction,
+so the start waits for its commit; the result is written to `messages.log`). If another production is running in the
+namespace, nothing is stopped: Setup prints which one is running and how to start `LabTriage.Production`.
+
+**Data folders:** the production paths are fixed to `/home/irisowner/dev/data/`. Setup creates
+`/home/irisowner/dev/data/{in,out,error,archive,replay}` when missing and copies the replay recordings and the samples
+from the module into `/home/irisowner/dev/data/replay` and `/home/irisowner/dev/data/samples` (existing files are
+kept). Drop HL7 files into `/home/irisowner/dev/data/in/`; results land in `/home/irisowner/dev/data/out/`.
+
+The unit tests (`tests/UnitTest`) run in the `test` phase and are not part of the package.
+
 ## Clean up
 
 ```bash
@@ -311,7 +369,7 @@ A message whose **final decision is HOLD_FOR_REVIEW** also becomes a task in the
 task: the alert file is their escalation. RELEASE messages need no human.
 
 - Inbox: http://localhost:52773/csp/healthshare/irisapp/_DeepSee.UserPortal.Workflow.zen, user `SuperUser`,
-  password `SYS`. The Inbox shows the tasks of the logged-in user only. `iris.script` creates the Workflow users
+  password `SYS`. The Inbox shows the tasks of the logged-in user only. `LabTriage.Installer` (called by `iris.script`) creates the Workflow users
   `SuperUser` and `_SYSTEM` at build time and adds both to `LabReviewer`, so each task reaches both of them.
 - The task subject is `Lab results held for review: MSH-10 <MSH-10>, order <OBR-2>`. The message lists the exams held
   for review, with their reasonCode and reason.
@@ -393,6 +451,7 @@ back to empty at the end (`trace-example.sh` sets back the value it found). `cle
 
 ```
 ├── Dockerfile, docker-compose.yml, iris.script, merge.cpf
+├── module.xml                     IPM module (iris-lab-triage-agent)
 ├── .env.example
 ├── config/FlagCategory.xml        flag -> NORMAL / ABNORMAL / CRITICAL defaults
 ├── data/                          in, out, error, archive, replay, samples, trace-example
@@ -400,6 +459,7 @@ back to empty at the end (`trace-example.sh` sets back the value it found). `cle
 ├── docs/images/                   README screenshots
 ├── src/LabTriage/
 │   ├── Production.cls
+│   ├── Installer.cls              Setup: Lookup Table, Workflow role, data folders, AutoStart, start
 │   ├── Service/FileInbound.cls
 │   ├── Process/TriageProcess.cls
 │   ├── Operation/                 AgentOperation, DecisionFileOperation, ErrorFileOperation
