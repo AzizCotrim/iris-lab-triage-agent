@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Export generator="Cache" version="25">
+  <Document name="iris-lab-triage-agent.ZPM">
+    <Module>
+      <Name>iris-lab-triage-agent</Name>
+      <Version>1.0.1</Version>
+      <Description>Interoperability production that triages HL7 v2 lab results with deterministic rules and an AI Hub agent, and routes uncertain exams to human review (Workflow).</Description>
+      <Keywords>hl7,ai-hub,interoperability,triage,workflow</Keywords>
+      <Packaging>module</Packaging>
+      <SourcesRoot>src</SourcesRoot>
+      <SystemRequirements Version="&gt;=2026.3" Interoperability="enabled"/>
+
+      <!-- Application classes (src/LabTriage). -->
+      <Resource Name="LabTriage.PKG"/>
+
+      <!-- Files read by LabTriage.Installer.Setup from the module root; copied as-is into the package. -->
+      <Resource Name="/config/FlagCategory.xml"/>
+      <Resource Name="/data/replay/"/>
+      <Resource Name="/data/samples/"/>
+
+      <!-- Unit tests (tests/UnitTest) live in the same LabTriage package as the app. Declared one class
+           at a time: a Package="LabTriage" UnitTest would get the unique name LabTriage.PKG, the same as
+           the app resource, and the .PKG resource would then also pick up the test classes. A class
+           listed here is owned by its UnitTest resource, so LabTriage.PKG leaves it out. -->
+      <UnitTest Name="/tests/UnitTest/" Class="LabTriage.Operation.TestAgentOperation" Phase="test"/>
+      <UnitTest Name="/tests/UnitTest/" Class="LabTriage.Operation.TestDecisionFileOperation" Phase="test"/>
+      <UnitTest Name="/tests/UnitTest/" Class="LabTriage.Rules.TestCriticalLimits" Phase="test"/>
+      <UnitTest Name="/tests/UnitTest/" Class="LabTriage.Util.TestAgentContract" Phase="test"/>
+      <UnitTest Name="/tests/UnitTest/" Class="LabTriage.Util.TestReferenceRange" Phase="test"/>
+
+      <!-- After Activate (which follows Compile): Lookup Table, Workflow role and users, data folders,
+           SetAutoStart, and start the production now if none is running (second argument 1).
+           ${root} is the module root, with a final "/". -->
+      <Invoke Class="LabTriage.Installer" Method="Setup" Phase="Activate" When="After">
+        <Arg>${root}</Arg>
+        <Arg>1</Arg>
+      </Invoke>
+    </Module>
+  </Document>
+</Export>
