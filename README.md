@@ -52,11 +52,17 @@ Langfuse is the better choice for teams that need evaluation pipelines, cost das
 
 ## Prerequisites
 
-- Docker and Docker Compose v2.24+ (`env_file` with `required: false`)
-- x86_64 host: the image is linux/amd64 only (Apple Silicon runs it emulated)
-- Access to the InterSystems AI Hub Early Access Program (EAP)
-- bash and python3 for the scripts in `tests/e2e/` (jq optional)
-- Ports 52773 and 1972 free
+| Requirement | Version | Get it | Check |
+|---|---|---|---|
+| Git | any | [git-scm.com/downloads](https://git-scm.com/downloads) | `git --version` |
+| Docker Engine or Docker Desktop | 24+ | [docs.docker.com/get-docker](https://docs.docker.com/get-docker/) | `docker --version` |
+| Docker Compose | v2.24+ (`env_file` uses `required: false`) | included with Docker Desktop | `docker compose version` |
+| x86_64 host | the image is linux/amd64 only; Apple Silicon runs it emulated | — | `uname -m` |
+| AI Hub EAP access and the base image | build 2026.3.0AI.154.0 | see [Base image](#base-image) | `docker image ls` |
+| bash and python3, for `tests/e2e/` | any (jq optional) | — | `python3 --version` |
+| Ports 52773 and 1972 | must be free | — | — |
+| IPM client (**Optional**) | 0.9+ | only to install with IPM; see [Install with IPM](#install-with-ipm) | `zpm "version"` (in the IRIS terminal) |
+| Gemini API key (**Optional**) | `GOOGLE_API_KEY`, only for REAL mode; the default REPLAY mode runs without a key | see [LLM provider](#llm-provider) | — |
 
 ## Base image
 
