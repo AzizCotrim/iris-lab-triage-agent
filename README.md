@@ -10,6 +10,10 @@ All data in this repo is synthetic. The critical limits are fictional. Not for c
 
 Article on the Developer Community: [Rules First, Model Second, Human Last: Triaging HL7 v2 Lab Results with an AI Hub Agent](https://community.intersystems.com/post/rules-first-model-second-human-last-triaging-hl7-v2-lab-results-ai-hub-agent)
 
+## Demo video
+
+[![LabTriage Agent demo](https://img.youtube.com/vi/d4WxXiQP5_Y/0.jpg)](https://youtu.be/d4WxXiQP5_Y)
+
 ## Community Idea implemented
 
 [DPI-I-689: Use InterSystems Interoperability as a Traceability tool for GenAI LLM pipelines](https://ideas.intersystems.com/ideas/DPI-I-689)
