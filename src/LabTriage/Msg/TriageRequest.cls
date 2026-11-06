@@ -9,8 +9,7 @@ Class LabTriage.Msg.TriageRequest Extends Ens.Request
     /// Name of the input file, from the adapter (not part of the HL7 message).
     Property SourceFileName As %String(MAXLEN = 255);
 
-    /// PID-3.1. Used in the output and, later, in the history lookup;
-    /// never sent to the LLM.
+    /// PID-3.1. Used in the output; never sent to the LLM.
     Property PatientId As %String(MAXLEN = 255);
 
     /// OBR-2 (placer order number).

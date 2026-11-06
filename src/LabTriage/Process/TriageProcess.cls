@@ -456,7 +456,6 @@ Class LabTriage.Process.TriageProcess Extends Ens.BusinessProcess
     /// The same exam came more than once in the message. The critical value wins and the others
     /// are listed as discarded; with no critical value there is no rule to choose one, so the
     /// exam goes to review. Either way it appears once, in a single list.
-    /// TODO (delta check): use the most recent value by collection date when history exists.
     Method TriageDuplicate(pExams As %Collection.ListOfObj, pCode As %String, pTriageResponse As LabTriage.Msg.TriageResponse)
     {
         Set tValues = ""

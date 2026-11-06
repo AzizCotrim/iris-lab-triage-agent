@@ -12,7 +12,7 @@ Class LabTriage.Agent.TriageAgent Extends %AI.Agent
     /// replay recordings are keyed by it, so old recordings stop matching.
     Parameter PROMPTVERSION = "mvp-1";
 
-    /// System prompt (MVP version, without the delta check tool).
+    /// System prompt (MVP version).
     XData INSTRUCTIONS [ MimeType = text/markdown ]
     {
         You are LabTriage Agent, a decision-support component inside an automated
