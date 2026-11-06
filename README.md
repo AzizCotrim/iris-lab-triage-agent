@@ -176,7 +176,8 @@ The app is also an IPM module (`module.xml`, `iris-lab-triage-agent` 1.0.1).
 > Interoperability enabled.
 
 **Namespace:** any namespace with Interoperability enabled. In the base image, `USER` already has it (no extra step).
-In this repo's container, use `IRISAPP`. Run the steps below in that namespace.
+In this repo's container, use `IRISAPP`; the module path in step 3 is `/home/irisowner/dev`. Run the steps below in that
+namespace.
 
 The build 154 image does not ship the IPM client (no `dist/install/misc/zpm.xml`; the `%IPM` classes in `HSLIB` are
 HealthShare's own, not a `zpm` command).
