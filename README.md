@@ -197,13 +197,13 @@ repo -r -n registry -url https://pm.community.intersystems.com/ -user "" -pass "
 
 The first line opens the IPM shell; `quit` leaves it.
 
-**3. Install the app.** From the community registry, once the module is published on Open Exchange:
+**3. Install the app.** From the community registry (version 1.0.1 is published):
 
 ```
 USER>zpm "install iris-lab-triage-agent"
 ```
 
-Or from a clone (works now):
+Or from a clone:
 
 ```
 USER>zpm "load /path/to/iris-lab-triage-agent -v"
@@ -224,7 +224,7 @@ namespace, nothing is stopped: Setup prints which one is running and how to star
 from the module into `/home/irisowner/dev/data/replay` and `/home/irisowner/dev/data/samples` (existing files are
 kept). Drop HL7 files into `/home/irisowner/dev/data/in/`; results land in `/home/irisowner/dev/data/out/`.
 
-The unit tests (`tests/UnitTest`) run in the `test` phase and are not part of the package.
+The published package includes the unit tests (`tests/UnitTest`). Run them with `zpm "iris-lab-triage-agent test"`.
 
 ## Clean up
 
